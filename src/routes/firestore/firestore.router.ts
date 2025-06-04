@@ -43,11 +43,11 @@ FIRESTORE_ROUTER.get('/:collection', async (req: Request, res: Response) => {
  * @throws {404} - If the document is not found in the specified collection.
  * @throws {500} - If an error occurs while fetching the document.
  */
-FIRESTORE_ROUTER.get('/:collection/:documentId', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.get('/:collection/:documentName', async (req: Request, res: Response) => {
     try {
-        const { collection, documentId } = req.params;
+        const { collection, documentName } = req.params;
 
-        const result = await firestoreService.fetchDocumentById(collection, documentId);
+        const result = await firestoreService.fetchDocumentById(collection, documentName);
 
         if ('error' in result) {
             return res.status(404).json({ error: result.error });
@@ -72,12 +72,12 @@ FIRESTORE_ROUTER.get('/:collection/:documentId', async (req: Request, res: Respo
  * @throws {404} - If categories cannot be fetched or document is not found (based on service result).
  * @throws {500} - If an internal error occurs during the fetch operation.
  */
-FIRESTORE_ROUTER.get('/:collection/:documentId/category', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request, res: Response) => {
     try {
-        const { collection, documentId } = req.params;
+        const { collection, documentName } = req.params;
 
         try {
-            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
+            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
             res.json(result);
         } catch (error) {
             return res.status(404).json({ error: (error as Error).message });
@@ -101,14 +101,14 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/category', async (req: Request, r
  * @throws {404} - If the document, categories, or specified subcategory is not found.
  * @throws {500} - If an internal error occurs during the fetch operation.
  */
-FIRESTORE_ROUTER.get('/:collection/:documentId/category=:subcategory', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (req: Request, res: Response) => {
     try {
-        const { collection, documentId, subcategory } = req.params;
+        const { collection, documentName, subcategory } = req.params;
 
         // Make subcategory case-insensitive by converting to lowercase
         let matchedCategory: string;
         try {
-            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
+            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
 
             // Find the actual category name with correct case
             const subcategoryLower = subcategory.toLowerCase();
@@ -128,7 +128,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/category=:subcategory', async (re
 
         // Use the correctly cased category name for the data fetch
         try {
-            const categoryResult = await firestoreService.fetchCategoryData(collection, documentId, matchedCategory);
+            const categoryResult = await firestoreService.fetchCategoryData(collection, documentName, matchedCategory);
             res.json({ data: categoryResult, count: categoryResult.length });
         } catch (error) {
             return res.status(404).json({ error: (error as Error).message });
@@ -136,41 +136,6 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/category=:subcategory', async (re
     } catch (error) {
         logger.error(`Error fetching subcategory data from Firestore: ${error}`);
         res.status(500).json({ error: 'Failed to fetch subcategory data from Firestore' });
-    }
-});
-
-/**
- * GET endpoint to fetch data for a specific category of a Firestore document.
- *
- * NOTE: If the `categoryName` is 'category', this route returns an error instructing to use the `/category` endpoint instead.
- *
- * @route GET /:collection/:documentId/:categoryName
- * @param {Request} req - Express request object. Expects `collection`, `documentId`, and `categoryName` as route parameters.
- * @param {Response} res - Express response object used to return category data or an error message.
- *
- * @returns {JSON} - Returns category-specific data if retrieval is successful.
- *
- * @throws {404} - If the `categoryName` is 'category', or if the category data is not found.
- * @throws {500} - If an internal server error occurs during the fetch.
- */
-FIRESTORE_ROUTER.get('/:collection/:documentId/:categoryName', async (req: Request, res: Response) => {
-    try {
-        const { collection, documentId, categoryName } = req.params;
-
-        // Skip if the categoryName is 'category' as it's handled by another route
-        if (categoryName === 'category') {
-            return res.status(404).json({ error: 'Use /category endpoint instead' });
-        }
-
-        try {
-            const result = await firestoreService.fetchCategoryData(collection, documentId, categoryName);
-            res.json({ data: result, count: result.length });
-        } catch (error) {
-            return res.status(404).json({ error: (error as Error).message });
-        }
-    } catch (error) {
-        logger.error(`Error fetching category data from Firestore: ${error}`);
-        res.status(500).json({ error: 'Failed to fetch category data from Firestore' });
     }
 });
 
@@ -186,11 +151,11 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/:categoryName', async (req: Reque
  * @throws {404} - If the document could not be found or deleted.
  * @throws {500} - If an internal server error occurs during the deletion process.
  */
-FIRESTORE_ROUTER.delete('/:collection/:documentId', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: Response) => {
     try {
-        const { collection, documentId } = req.params;
+        const { collection, documentName } = req.params;
 
-        const result = await firestoreService.deleteDocumentById(collection, documentId);
+        const result = await firestoreService.deleteDocumentById(collection, documentName);
 
         if ('error' in result) {
             return res.status(404).json({ error: result.error });

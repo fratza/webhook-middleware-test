@@ -38,6 +38,7 @@ class FirestoreService {
 
     /**
      * Fetches a single document by ID from a specified Firestore collection.
+     * Unwraps the data structure to return the array directly without 'data' and category wrappers.
      *
      * @param {string} collection - The name of the Firestore collection.
      * @param {string} documentId - The ID of the document to retrieve.
@@ -52,7 +53,25 @@ class FirestoreService {
                 return { error: 'Document not found' };
             }
 
-            return doc.data();
+            const docData = doc.data();
+            
+            // Check if data has the nested structure we want to unwrap
+            if (docData && docData.data) {
+                // Find the first array in the data object (e.g., OleSports)
+                const dataKeys = Object.keys(docData.data);
+                for (const key of dataKeys) {
+                    if (Array.isArray(docData.data[key])) {
+                        console.log(`[Firestore] Unwrapping array data from category: ${key}`);
+                        return docData.data[key]; // Return the array directly
+                    }
+                }
+                
+                // If no arrays found, return the data object without the wrapper
+                return docData.data;
+            }
+
+            // Return the original data if it doesn't have the expected structure
+            return docData;
         } catch (error) {
             console.error(`Error fetching document from Firestore: ${error}`);
             return { error: `Failed to fetch document: ${error}` };
