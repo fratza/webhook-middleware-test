@@ -17,7 +17,7 @@ import process from 'process';
 /** Initialize environment and express */
 dotenv.config();
 const env = process.env.NODE_ENV;
-const port = process.env.PORT;
+const port = process.env.PORT || 4000;
 const app: Application = express();
 
 /** Use helmet to secure Express apps by setting various HTTP headers */
