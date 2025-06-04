@@ -1,20 +1,9 @@
 import { admin, db } from '../../config/firebase';
+import { Firestore } from 'firebase-admin/firestore';
 import logger from '../../middlewares/logger';
 import { convertToFirestoreFormat } from '../../utils/firestore';
 import { BrowseAIWebhookData } from '../../interfaces';
-import {
-    appendNewData,
-    extractDomainIdentifier,
-    cleanDataFields,
-    processArrayField,
-    processArrayItem,
-    processEventDate,
-    parseEventDate,
-    logFilteringResults,
-    deduplicateItems,
-    deduplicateAgainstExisting,
-    createUniqueKeyForItem,
-} from '../../utils/browseai';
+import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai';
 
 export class BrowseAIService {
     /**
@@ -23,10 +12,19 @@ export class BrowseAIService {
      * @param {BrowseAIWebhookData} webhookData - Data received from the webhook.
      * @returns {Promise<Object>} Result of the processing.
      */
+
+    private db: Firestore;
+    public task: any; // Using any instead of object to avoid property access issues
+    
+    constructor() {
+        this.db = db;
+    }
+
     public async processWebhookData(webhookData: BrowseAIWebhookData): Promise<Object> {
         logger.info('[BrowseAI] Starting to process incoming request...');
-        const task = webhookData?.task;
-        const inputParams = task.inputParameters || {};
+
+        this.task = webhookData?.task;
+        const inputParams = this.task.inputParameters || {};
         const [firstKey, firstValue] = Object.entries(inputParams)[0] || [];
 
         const originUrl = (firstValue as string) || 'unknown';
@@ -38,16 +36,16 @@ export class BrowseAIService {
 
         logger.info('[BrowseAI] Processing captured data...');
 
-        if (task.capturedTexts) {
-            await this.storeCapturedTexts(batch, docName, originUrl, task.capturedTexts);
+        if (this.task.capturedTexts) {
+            await this.storeCapturedTexts(batch, docName, originUrl, this.task.capturedTexts);
         }
 
-        if (task.capturedScreenshots) {
-            await this.storeCapturedScreenshots(batch, docName, originUrl, task.capturedScreenshots);
+        if (this.task.capturedScreenshots) {
+            await this.storeCapturedScreenshots(batch, docName, originUrl, this.task.capturedScreenshots);
         }
 
-        if (task.capturedLists) {
-            await this.storeCapturedLists(batch, docName, originUrl, task.capturedLists);
+        if (this.task.capturedLists) {
+            await this.storeCapturedLists(batch, docName, originUrl, this.task.capturedLists);
         }
 
         // We can't access internal properties of the batch, so just log the commit
@@ -72,7 +70,6 @@ export class BrowseAIService {
      * @param {WriteBatch} batch - Firestore batch instance.
      * @param {string} originUrl - Source URL of the captured data.
      * @param {any} texts - Captured text data.
-     * @param {Timestamp} timestamp - Firestore timestamp for record creation.
      */
     private async storeCapturedTexts(
         batch: FirebaseFirestore.WriteBatch,
@@ -81,7 +78,7 @@ export class BrowseAIService {
         texts: any,
     ): Promise<void> {
         logger.info('[Texts] Processing captured texts...');
-        const textsRef = db.collection('captured_texts').doc(docName);
+        const textsRef = this.db.collection('captured_texts').doc(docName);
         const textsData = convertToFirestoreFormat(texts);
 
         const docSnapshot = await textsRef.get();
@@ -91,21 +88,26 @@ export class BrowseAIService {
         const processedData = cleanDataFields(textsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            logger.info(`[Texts] Document '${docName}' exists, updating with new data from ${originUrl}`);
+            logger.info(`[DB UPDATE] Updating document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(textsRef, appendData);
-            logger.info(`[Texts] Updated document '${docName}' with merged data`);
         } else {
             // Document doesn't exist, create new document
-            logger.info(`[Texts] Creating new document '${docName}' with data from ${originUrl}`);
+            logger.info(`[DB INSERT] Creating new document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`);
             const prepData = {
                 data: {
                     ...processedData,
                 },
             };
             batch.set(textsRef, prepData);
-            logger.info(`[Texts] Created new document '${docName}' with ${Object.keys(processedData).length} fields`);
         }
+        
+        // Log array fields for better visibility
+        Object.entries(processedData).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
+            }
+        });
     }
 
     /**
@@ -123,37 +125,28 @@ export class BrowseAIService {
         screenshots: any,
     ): Promise<void> {
         logger.info('[Screenshots] Processing captured screenshots...');
-        const screenshotsRef = db.collection('captured_screenshots').doc(docName);
+        const screenshotsRef = this.db.collection('captured_screenshots').doc(docName);
         const screenshotsData = convertToFirestoreFormat(screenshots);
-
+        const timestamp = admin.firestore.Timestamp.fromDate(new Date());
+        
         const docSnapshot = await screenshotsRef.get();
         const existingData = docSnapshot.exists ? docSnapshot.data() : null;
-
-        // Pass existing data and originUrl to cleanDataFields
+        
+        // Process the screenshots data
         const processedData = cleanDataFields(screenshotsData, existingData, originUrl, docName);
-
+        
         if (docSnapshot.exists) {
-            logger.info(`[Screenshots] Document '${docName}' already exists, updating data...`);
-
-            // Merge with existing data
+            logger.info(`[Screenshots] Updating existing document '${docName}'`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(screenshotsRef, appendData);
-            logger.info(`[Screenshots] Updated document '${docName}' with merged data`);
         } else {
-            // Document doesn't exist, create new document
-            logger.info(`[Screenshots] Creating new document '${docName}' with data from ${originUrl}`);
-            const prepData = {
-                data: {
-                    ...processedData,
-                },
-            };
-            batch.set(screenshotsRef, prepData);
-            logger.info(
-                `[Screenshots] Created new document '${docName}' with ${Object.keys(processedData).length} fields`,
-            );
+            logger.info(`[Screenshots] Creating new document '${docName}'`);
+            batch.set(screenshotsRef, {
+                data: processedData,
+                timestamp,
+                originUrl,
+            });
         }
-
-        logger.info(`[Screenshots] Prepared for storage with ID: ${docName}`);
     }
 
     /**
@@ -171,55 +164,34 @@ export class BrowseAIService {
     ): Promise<void> {
         logger.info('[Lists] Processing captured lists...');
 
-        const listsRef = db.collection('captured_lists').doc(docName);
+        const listsRef = this.db.collection('captured_lists').doc(docName);
         const listsData = convertToFirestoreFormat(lists);
 
-        // Check if document already exists
         const docSnapshot = await listsRef.get();
         const existingData = docSnapshot.exists ? docSnapshot.data() : null;
 
-        // Clean and process the data
         const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            logger.info(`[Lists] Document '${docName}' already exists, updating data...`);
-
-            // Merge with existing data
+            logger.info(`[DB UPDATE] Updating document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(listsRef, appendData);
-
-            // Log the fields being updated
-            const fieldCount = Object.keys(processedData).length;
-            logger.info(`[Lists] Updated document '${docName}' with ${fieldCount} fields`);
-
-            // Log details about arrays being updated
-            Object.entries(processedData).forEach(([key, value]) => {
-                if (Array.isArray(value)) {
-                    logger.info(`[Lists] Field '${key}' contains ${value.length} items`);
-                }
-            });
         } else {
-            // Document doesn't exist, create new document
+            logger.info(`[DB INSERT] Creating new document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`);
             const prepData = {
                 data: {
                     ...processedData,
                 },
             };
             batch.set(listsRef, prepData);
-
-            // Log the fields being created
-            const fieldCount = Object.keys(processedData).length;
-            logger.info(`[Lists] Created new document '${docName}' with ${fieldCount} fields`);
-
-            // Log details about arrays being created
-            Object.entries(processedData).forEach(([key, value]) => {
-                if (Array.isArray(value)) {
-                    logger.info(`[Lists] New field '${key}' contains ${value.length} items`);
-                }
-            });
         }
-
-        logger.info(`[Lists] Prepared for storage with ID: ${docName}`);
+        
+        // Log array fields for better visibility
+        Object.entries(processedData).forEach(([key, value]) => {
+            if (Array.isArray(value)) {
+                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
+            }
+        });
     }
 
     public static async fetchFromCollection(collection: string): Promise<string[]> {
