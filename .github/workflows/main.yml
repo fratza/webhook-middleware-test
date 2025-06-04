@@ -1,0 +1,72 @@
+name: NCTV webhook-middleware deployment to AWS Lambda
+
+on:
+    push:
+        branches:
+            - main-jo # Testing branch
+            - development # Development environment
+            - staging # Staging environment
+            - production # Production environment
+
+jobs:
+    deploy_lambda:
+        runs-on: ubuntu-latest
+
+        steps:
+            # Step 1: Checkout the repository
+            - name: Checkout repository
+              uses: actions/checkout@v3
+
+            # Step 2: Setup Node.js environment
+            - name: Setup Node.js
+              uses: actions/setup-node@v3
+              with:
+                  node-version: '18' # Align with your package.json engines
+
+            # Step 3: Set environment-specific secrets
+            - name: Set environment-specific secrets
+              id: aws-secrets
+              run: |
+                  if [[ "${{ github.ref_name }}" == "main-jo" ]] || [[ "${{ github.ref_name }}" == "development" ]]; then
+                    echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID_DEV }}" >> $GITHUB_ENV
+                    echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY_DEV }}" >> $GITHUB_ENV
+                  elif [[ "${{ github.ref_name }}" == "staging" ]]; then
+                    echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID_STG }}" >> $GITHUB_ENV
+                    echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY_STG }}" >> $GITHUB_ENV
+                  elif [[ "${{ github.ref_name }}" == "production" ]]; then
+                    echo "AWS_ACCESS_KEY_ID=${{ secrets.AWS_ACCESS_KEY_ID_PROD }}" >> $GITHUB_ENV
+                    echo "AWS_SECRET_ACCESS_KEY=${{ secrets.AWS_SECRET_ACCESS_KEY_PROD }}" >> $GITHUB_ENV
+                  else
+                    echo "Unknown branch: ${{ github.ref_name }}" && exit 1
+                  fi
+
+            # Step 4: Configure AWS credentials
+            - name: Configure AWS credentials
+              uses: aws-actions/configure-aws-credentials@v3
+              with:
+                  aws-access-key-id: ${{ env.AWS_ACCESS_KEY_ID }}
+                  aws-secret-access-key: ${{ env.AWS_SECRET_ACCESS_KEY }}
+                  aws-region: us-east-1 # Change if your Lambda is in a different region
+
+            # Step 5: Install dependencies
+            - name: Install dependencies
+              run: npm install
+
+            # Step 6: Build the project
+            - name: Build the project
+              run: |
+                  npx rimraf dist && npx tsc -p . # Ensure the `dist` folder is rebuilt
+                  npx gulp bundle # Adjust if you have specific bundling logic
+
+            # Step 7: Create deployment package
+            - name: Package the Lambda function
+              run: |
+                  cd dist
+                  zip -r ../deploy.zip ./* # Package only the contents of the `dist` directory
+
+            # Step 8: Deploy to AWS Lambda
+            - name: Deploy to AWS Lambda
+              run: |
+                  aws lambda update-function-code \
+                    --function-name webhook-middleware \
+                    --zip-file fileb://deploy.zip

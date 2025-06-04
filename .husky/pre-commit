@@ -1,0 +1,7 @@
+#!/bin/sh
+
+echo "Running pre-commit hook..."
+
+# Run Prettier to format files before committing
+echo "✨ Formatting code with Prettier..."
+npm run pretty || { echo "❌ Formatting failed. Fix errors before committing."; exit 1; }
