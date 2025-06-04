@@ -56,7 +56,7 @@ app.use('/api/checkup', CHECKUP_ROUTER);
  * Route serving webhook controller.
  * @name /api/webhooks
  */
-app.use('/api/webhooks', WEBHOOK_ROUTER);
+app.use('/api/webhook', WEBHOOK_ROUTER);
 
 /**
  * Route serving firestore operations.
