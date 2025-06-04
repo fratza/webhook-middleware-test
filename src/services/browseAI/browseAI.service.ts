@@ -21,7 +21,7 @@ export class BrowseAIService {
 
     public async processWebhookData(webhookData: BrowseAIWebhookData): Promise<Object> {
         console.log('[BrowseAI] Starting to process incoming request...');
-        console.log('[BrowseAI] Webhook data:', webhookData);
+        console.log('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
 
         this.task = webhookData?.task;
         const inputParams = this.task.inputParameters || {};

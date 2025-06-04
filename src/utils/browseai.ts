@@ -206,36 +206,25 @@ export function processArrayItem(
         originUrl, // Add originUrl to each item
     };
 
-    // Define allowed fields
-    const allowedFields = [
-        'EventDate',
-        'ImageUrl',
-        'Location',
-        'Logo',
-        'Sports',
-        'Time',
-        'Description',
-        'Title',
-        'uid',
-    ];
+    // Define base allowed fields
+    let allowedFields = ['Date', 'ImageUrl', 'Location', 'Logo', 'Time', 'Description', 'Title', 'uid'];
 
-    console.log(`[ProcessArrayItem] Processing item with keys: ${Object.keys(processedItem).join(', ')}`);
+    // Add custom allowed fields based on document name
+    if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
+        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports'];
+    }
 
     // Add all existing fields from the processed item, but only if they're in the allowed list
     Object.keys(processedItem).forEach((itemKey) => {
         // Only include allowed fields
         if (allowedFields.includes(itemKey)) {
             newLabel[itemKey] = processedItem[itemKey];
-            console.log(`[ProcessArrayItem] Added field '${itemKey}' to item`);
-        } else {
-            console.log(`[ProcessArrayItem] Skipped field '${itemKey}' (not in allowed list)`);
         }
     });
 
     // Add Image URL if it's missing
     if (!('ImageUrl' in newLabel)) {
         newLabel['ImageUrl'] = '';
-        console.log(`[ProcessArrayItem] Added empty ImageUrl field`);
     }
 
     // Special handling for olemisssports.com EventDate field

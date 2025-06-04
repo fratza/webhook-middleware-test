@@ -61,7 +61,6 @@ class FirestoreService {
                 const dataKeys = Object.keys(docData.data);
                 for (const key of dataKeys) {
                     if (Array.isArray(docData.data[key])) {
-                        console.log(`[Firestore] Unwrapping array data from category: ${key}`);
                         return docData.data[key]; // Return the array directly
                     }
                 }
