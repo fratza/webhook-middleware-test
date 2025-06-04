@@ -119,18 +119,18 @@ export function cleanDataFields(
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
-    const allowedFields = ['Title', 'Location', 'Logo', 'Sports', 'EventDate', 'Time'];
+    // const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
 
+    // Process object entries
     for (const [key, value] of Object.entries(data)) {
-        if (!allowedFields.includes(key)) continue;
+        // Skip position/Position and _STATUS fields
+        if (key.toLowerCase() === 'position' || key === '_STATUS') continue;
 
         if (Array.isArray(value)) {
             cleaned[key] = processArrayField(key, value, existingData, originUrl, docName);
         } else {
-            cleaned[key] =
-                typeof value === 'object' && value !== null
-                    ? cleanDataFields(value, existingData, originUrl, docName)
-                    : value;
+            // Recursively clean nested objects
+            cleaned[key] = typeof value === 'object' ? cleanDataFields(value, existingData, originUrl, docName) : value;
         }
     }
 
@@ -195,7 +195,7 @@ export function processArrayItem(
     originUrl: string,
     docName: string,
 ): any {
-    const processedItem = cleanDataFields(item, existingData, originUrl);
+    const processedItem = cleanDataFields(item, existingData, originUrl, docName);
 
     // Generate a unique ID for this item
     const uid = `${key.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`;
@@ -206,16 +206,43 @@ export function processArrayItem(
         originUrl, // Add originUrl to each item
     };
 
-    // Add all existing fields from the processed item
+    // Define allowed fields
+    const allowedFields = [
+        'EventDate',
+        'ImageUrl',
+        'Location',
+        'Logo',
+        'Sports',
+        'Time',
+        'Description',
+        'Title',
+        'uid',
+    ];
+
+    console.log(`[ProcessArrayItem] Processing item with keys: ${Object.keys(processedItem).join(', ')}`);
+
+    // Add all existing fields from the processed item, but only if they're in the allowed list
     Object.keys(processedItem).forEach((itemKey) => {
-        newLabel[itemKey] = processedItem[itemKey];
-
-        // Add Image URL if it's missing
-        if (!('ImageUrl' in processedItem)) newLabel['ImageUrl'] = '';
-
-        // Special handling for olemisssports.com EventDate field
-        processEventDate(newLabel, itemKey, processedItem, key, docName, originUrl);
+        // Only include allowed fields
+        if (allowedFields.includes(itemKey)) {
+            newLabel[itemKey] = processedItem[itemKey];
+            console.log(`[ProcessArrayItem] Added field '${itemKey}' to item`);
+        } else {
+            console.log(`[ProcessArrayItem] Skipped field '${itemKey}' (not in allowed list)`);
+        }
     });
+
+    // Add Image URL if it's missing
+    if (!('ImageUrl' in newLabel)) {
+        newLabel['ImageUrl'] = '';
+        console.log(`[ProcessArrayItem] Added empty ImageUrl field`);
+    }
+
+    // Special handling for olemisssports.com EventDate field
+    // Check for EventDate field specifically
+    if (processedItem.EventDate) {
+        processEventDate(newLabel, 'EventDate', processedItem, key, docName, originUrl);
+    }
 
     return newLabel;
 }
