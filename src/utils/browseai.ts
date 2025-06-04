@@ -1,4 +1,3 @@
-import logger from '../middlewares/logger';
 import * as admin from 'firebase-admin';
 
 /**
@@ -15,7 +14,9 @@ export function appendNewData(
 ): any {
     const existingData = docSnapshot.data();
     if (!existingData) {
-        logger.info(`[DB Insert] Creating new document with ${Object.keys(processedData).length} fields from ${originUrl}`);
+        console.log(
+            `[DB Insert] Creating new document with ${Object.keys(processedData).length} fields from ${originUrl}`,
+        );
         return { data: processedData };
     }
 
@@ -25,8 +26,8 @@ export function appendNewData(
     // Ensure base structure exists
     if (!mergedData.data) mergedData.data = {};
 
-    logger.info(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
-    
+    console.log(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
+
     // Process each key in the processed data
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
@@ -36,16 +37,22 @@ export function appendNewData(
             // Append the new array items to the existing array
             const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
-            logger.info(`[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`);
+            console.log(
+                `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
+            );
         } else {
             // Otherwise, replace or add the key-value pair
             const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
-            logger.info(`[DB Update] ${isNew ? 'Added new' : 'Updated'} field '${key}' with ${Array.isArray(newValue) ? `${newValue.length} items` : 'value'}`);
+            console.log(
+                `[DB Update] ${isNew ? 'Added new' : 'Updated'} field '${key}' with ${Array.isArray(newValue) ? `${newValue.length} items` : 'value'}`,
+            );
         }
     });
 
-    logger.info(`[DB Update] Completed update for document ${docSnapshot.id} with ${Object.keys(processedData).length} fields`);
+    console.log(
+        `[DB Update] Completed update for document ${docSnapshot.id} with ${Object.keys(processedData).length} fields`,
+    );
     return mergedData;
 }
 
@@ -71,7 +78,7 @@ export function extractDomainIdentifier(url: string): string {
             }
         }
     } catch (error) {
-        logger.warn(`Invalid URL: ${url}`);
+        console.warn(`Invalid URL: ${url}`);
     }
 
     return docName;
@@ -96,11 +103,11 @@ export function cleanDataFields(
 
     // Handle arrays
     if (Array.isArray(data)) {
-        return data.map((item) => cleanDataFields(item, existingData, originUrl));
+        return data.map((item) => cleanDataFields(item, existingData, originUrl, docName));
     }
 
     // Handle objects
-    return processObjectFields(data, existingData, originUrl);
+    return processObjectFields(data, existingData, originUrl, docName);
 }
 
 /**
@@ -110,10 +117,9 @@ export function cleanDataFields(
  * @param originUrl Origin URL
  * @returns Processed object with only the specified fields
  */
-export function processObjectFields(data: any, existingData: any, originUrl: string): any {
+export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
-    const docName = extractDomainIdentifier(originUrl);
-    const allowedFields = ['EventDate', 'ImageUrl', 'Location', 'Logo', 'Sports', 'Time'];
+    const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
 
     // Process object entries
     for (const [key, value] of Object.entries(data)) {
@@ -124,7 +130,7 @@ export function processObjectFields(data: any, existingData: any, originUrl: str
             cleaned[key] = processArrayField(key, value, existingData, originUrl, docName);
         } else {
             // Recursively clean nested objects
-            cleaned[key] = typeof value === 'object' ? cleanDataFields(value, existingData, originUrl) : value;
+            cleaned[key] = typeof value === 'object' ? cleanDataFields(value, existingData, originUrl, docName) : value;
         }
     }
 
@@ -246,10 +252,10 @@ export function processEventDate(
                 newLabel['StartDate'] = dateInfo.startDate;
                 newLabel['EndDate'] = dateInfo.endDate;
 
-                logger.info(`[BrowseAI Webhook] Processed date range: ${dateInfo.startDate} to ${dateInfo.endDate}`);
+                console.log(`[BrowseAI Webhook] Processed date range: ${dateInfo.startDate} to ${dateInfo.endDate}`);
             }
         } catch (error) {
-            logger.error(`[BrowseAI Webhook] Error processing date for olemisssports.com:`, error);
+            console.error(`[BrowseAI Webhook] Error processing date for olemisssports.com:`, error);
         }
     }
 }
@@ -380,7 +386,7 @@ export function deduplicateAgainstExisting(newItems: any[], existingItems: any[]
  */
 export function logFilteringResults(before: any[], after: any[]): void {
     if (before.length !== after.length) {
-        logger.info(
+        console.log(
             `[BrowseAI Webhook] Filtered out ${before.length - after.length} duplicate items from ${before.length} total items`,
         );
     }

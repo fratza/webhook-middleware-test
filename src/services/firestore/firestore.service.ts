@@ -1,5 +1,4 @@
 import { Firestore, WriteBatch } from 'firebase-admin/firestore';
-import logger from '../../middlewares/logger';
 
 // Define error response type
 type ErrorResponse = {
@@ -32,7 +31,7 @@ class FirestoreService {
             const documentIds = snapshot.docs.map((doc) => doc.id);
             return documentIds;
         } catch (error) {
-            logger.error(`Error fetching documents from Firestore: ${error}`);
+            console.error(`Error fetching documents from Firestore: ${error}`);
             return { error: `Failed to fetch documents: ${error}` };
         }
     }
@@ -55,7 +54,7 @@ class FirestoreService {
 
             return doc.data();
         } catch (error) {
-            logger.error(`Error fetching document from Firestore: ${error}`);
+            console.error(`Error fetching document from Firestore: ${error}`);
             return { error: `Failed to fetch document: ${error}` };
         }
     }
@@ -83,7 +82,7 @@ class FirestoreService {
             await docRef.delete();
             return { success: true, message: 'Document deleted successfully' };
         } catch (error) {
-            logger.error(`Error deleting document from Firestore: ${error}`);
+            console.error(`Error deleting document from Firestore: ${error}`);
             return { error: `Failed to delete document: ${error}` };
         }
     }
@@ -124,7 +123,7 @@ class FirestoreService {
                 categories,
             };
         } catch (error) {
-            logger.error(`Error fetching categories from Firestore: ${error}`);
+            console.error(`Error fetching categories from Firestore: ${error}`);
             throw error;
         }
     }
@@ -162,7 +161,7 @@ class FirestoreService {
             // Sort the data in descending order by publishedDate or createdAt
             return this.sortCategoryData(docData[categoryName]);
         } catch (error) {
-            logger.error(`Error fetching category data from Firestore: ${error}`);
+            console.error(`Error fetching category data from Firestore: ${error}`);
             throw error;
         }
     }
@@ -185,126 +184,6 @@ class FirestoreService {
             // Sort in descending order (newest first)
             return timeB - timeA;
         });
-    }
-
-    /**
-     * Inserts or updates a document in a specified Firestore collection.
-     *
-     * @param {string} collection - The name of the Firestore collection.
-     * @param {string} documentId - The ID of the document to insert or update.
-     * @param {any} data - The data to insert or update.
-     * @param {boolean} merge - Whether to merge the data with existing data (default: false).
-     * @returns {Promise<{success: true; documentId: string} | ErrorResponse>} - A promise that resolves to a success object or an error response.
-     */
-    /**
-     * Creates a batch operation with logging capabilities
-     * 
-     * @returns {Object} An enhanced batch object with logging methods
-     */
-    createBatchWithLogging() {
-        const batch = this.db.batch();
-        let operationCount = 0;
-        const startTime = Date.now();
-        
-        // Enhanced batch with logging
-        const enhancedBatch = {
-            // Original batch methods
-            set: (docRef: FirebaseFirestore.DocumentReference, data: any, options?: FirebaseFirestore.SetOptions) => {
-                // Check if this is a new document or an update
-                const isNew = !options || (options && !('mergeFields' in options));
-                const operation = isNew ? 'SET' : 'UPDATE';
-                const path = docRef.path;
-                
-                logger.info(`[BATCH ${operation}] ${path} - Fields: ${Object.keys(data).length}`);
-                
-                // For arrays, log their sizes
-                Object.entries(data).forEach(([key, value]) => {
-                    if (Array.isArray(value)) {
-                        logger.info(`[BATCH ${operation}] ${path} - Field '${key}' has ${(value as any[]).length} items`);
-                    }
-                });
-                
-                operationCount++;
-                // Handle undefined options case
-                if (options) {
-                    return batch.set(docRef, data, options);
-                } else {
-                    return batch.set(docRef, data);
-                }
-            },
-            
-            update: (docRef: FirebaseFirestore.DocumentReference, data: any) => {
-                logger.info(`[BATCH UPDATE] ${docRef.path} - Fields: ${Object.keys(data).length}`);
-                operationCount++;
-                return batch.update(docRef, data);
-            },
-            
-            delete: (docRef: FirebaseFirestore.DocumentReference) => {
-                logger.info(`[BATCH DELETE] ${docRef.path}`);
-                operationCount++;
-                return batch.delete(docRef);
-            },
-            
-            commit: async () => {
-                logger.info(`[BATCH COMMIT] Committing ${operationCount} operations...`);
-                try {
-                    const result = await batch.commit();
-                    const duration = Date.now() - startTime;
-                    logger.info(`[BATCH SUCCESS] Committed ${operationCount} operations in ${duration}ms`);
-                    return result;
-                } catch (error) {
-                    logger.error(`[BATCH ERROR] Failed to commit batch: ${error}`);
-                    throw error;
-                }
-            }
-        };
-        
-        return enhancedBatch;
-    }
-
-    async insertDocument(
-        collection: string,
-        documentId: string,
-        data: any,
-        merge: boolean = false
-    ): Promise<{ success: true; documentId: string } | ErrorResponse> {
-        try {
-            const startTime = Date.now();
-            const docRef = this.db.collection(collection).doc(documentId);
-            
-            // Check if document exists to log appropriate message
-            const docSnapshot = await docRef.get();
-            const isNewDocument = !docSnapshot.exists;
-            
-            // Simple logging for database operations
-            const operation = isNewDocument ? 'INSERT' : 'UPDATE';
-            logger.info(`[DB ${operation}] ${collection}/${documentId} - Data: ${JSON.stringify(data).substring(0, 200)}${JSON.stringify(data).length > 200 ? '...' : ''}`);
-            
-            // Log the number of fields for quick reference
-            const fieldCount = Object.keys(data).length;
-            logger.info(`[DB ${operation}] ${collection}/${documentId} - Fields: ${fieldCount}`);
-            
-            // For arrays, log their sizes
-            Object.entries(data).forEach(([key, value]) => {
-                if (Array.isArray(value)) {
-                    logger.info(`[DB ${operation}] ${collection}/${documentId} - Field '${key}' has ${(value as any[]).length} items`);
-                }
-            });
-            
-            // Perform the write operation
-            await docRef.set(data, { merge });
-            
-            const duration = Date.now() - startTime;
-            logger.info(`[DB Success] ${isNewDocument ? 'Created' : 'Updated'} document '${documentId}' in ${duration}ms`);
-            
-            return { 
-                success: true, 
-                documentId 
-            };
-        } catch (error) {
-            logger.error(`Error inserting document into Firestore: ${error}`);
-            return { error: `Failed to insert document: ${error}` };
-        }
     }
 }
 
