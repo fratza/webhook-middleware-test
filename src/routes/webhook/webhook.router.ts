@@ -124,13 +124,12 @@ WEBHOOK_ROUTER.get('/api/firestore/:collection/:documentId/category', async (req
     try {
         const { collection, documentId } = req.params;
 
-        const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
-
-        if (!result.success) {
-            return res.status(404).json({ error: result.error });
+        try {
+            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
+            res.json({ success: true, ...result });
+        } catch (error) {
+            return res.status(404).json({ error: (error as Error).message });
         }
-
-        res.json(result);
     } catch (error) {
         logger.error(`Error fetching categories from Firestore: ${error}`);
         res.status(500).json({ error: 'Failed to fetch categories from Firestore' });
@@ -152,31 +151,33 @@ WEBHOOK_ROUTER.get(
             const { collection, documentId, subcategory } = req.params;
 
             // Make subcategory case-insensitive by converting to lowercase
-            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
-
-            if (!result.success) {
-                return res.status(404).json({ error: result.error });
-            }
-
-            // Find the actual category name with correct case
-            const subcategoryLower = subcategory.toLowerCase();
-            const matchedCategory = result.categories?.find((category) => category.toLowerCase() === subcategoryLower);
-
-            if (!matchedCategory) {
-                return res.status(404).json({
-                    error: `Category '${subcategory}' not found`,
-                    availableCategories: result.categories,
-                });
+            let matchedCategory: string;
+            try {
+                const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
+                
+                // Find the actual category name with correct case
+                const subcategoryLower = subcategory.toLowerCase();
+                const foundCategory = result.categories.find((category) => category.toLowerCase() === subcategoryLower);
+                
+                if (!foundCategory) {
+                    return res.status(404).json({
+                        error: `Category '${subcategory}' not found`,
+                        availableCategories: result.categories,
+                    });
+                }
+                
+                matchedCategory = foundCategory;
+            } catch (error) {
+                return res.status(404).json({ error: (error as Error).message });
             }
 
             // Use the correctly cased category name for the data fetch
-            const categoryResult = await firestoreService.fetchCategoryData(collection, documentId, matchedCategory);
-
-            if (!categoryResult.success) {
-                return res.status(404).json({ error: categoryResult.error });
+            try {
+                const categoryResult = await firestoreService.fetchCategoryData(collection, documentId, matchedCategory);
+                res.json({ success: true, data: categoryResult, count: categoryResult.length });
+            } catch (error) {
+                return res.status(404).json({ error: (error as Error).message });
             }
-
-            res.json(categoryResult);
         } catch (error) {
             logger.error(`Error fetching subcategory data from Firestore: ${error}`);
             res.status(500).json({ error: 'Failed to fetch subcategory data from Firestore' });
@@ -201,13 +202,12 @@ WEBHOOK_ROUTER.get('/api/firestore/:collection/:documentId/:categoryName', async
             return res.status(404).json({ error: 'Use /category endpoint instead' });
         }
 
-        const result = await firestoreService.fetchCategoryData(collection, documentId, categoryName);
-
-        if (!result.success) {
-            return res.status(404).json({ error: result.error });
+        try {
+            const result = await firestoreService.fetchCategoryData(collection, documentId, categoryName);
+            res.json({ success: true, data: result, count: result.length });
+        } catch (error) {
+            return res.status(404).json({ error: (error as Error).message });
         }
-
-        res.json(result);
     } catch (error) {
         logger.error(`Error fetching category data from Firestore: ${error}`);
         res.status(500).json({ error: 'Failed to fetch category data from Firestore' });

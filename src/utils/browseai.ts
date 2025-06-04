@@ -94,20 +94,21 @@ export function cleanDataFields(
 }
 
 /**
- * Process object fields, filtering out unwanted fields and handling arrays
+ * Process object fields, filtering to only include specific fields and handling arrays
  * @param data Object to process
  * @param existingData Existing data for reference
  * @param originUrl Origin URL
- * @returns Processed object
+ * @returns Processed object with only the specified fields
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string): any {
     const cleaned: any = {};
     const docName = extractDomainIdentifier(originUrl);
+    const allowedFields = ['EventDate', 'ImageUrl', 'Location', 'Logo', 'Sports', 'Time'];
 
     // Process object entries
     for (const [key, value] of Object.entries(data)) {
-        // Skip position/Position and _STATUS fields
-        if (key.toLowerCase() === 'position' || key === '_STATUS') continue;
+        // Only include allowed fields
+        if (!allowedFields.includes(key)) continue;
 
         if (Array.isArray(value)) {
             cleaned[key] = processArrayField(key, value, existingData, originUrl, docName);

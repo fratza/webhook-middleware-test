@@ -1,12 +1,10 @@
 import { Firestore } from 'firebase-admin/firestore';
 import logger from '../../middlewares/logger';
 
-// Define common return types to avoid repetition
-type FirestoreResult<T> = {
-    success: boolean;
-    error?: string;
-    message?: string;
-} & T;
+// Define error response type
+type ErrorResponse = {
+    error: string;
+};
 
 /**
  * Service for handling Firestore operations
@@ -26,19 +24,16 @@ class FirestoreService {
      * Fetches all document IDs from a specified Firestore collection.
      *
      * @param {string} collection - The name of the Firestore collection to query.
-     * @returns {Promise<{ documents: string[] }>} - A promise that resolves to an object containing an array of document IDs.
+     * @returns {Promise<string[] | ErrorResponse>} - A promise that resolves to an array of document IDs or an error response.
      */
-    async fetchFromCollection(collection: string): Promise<FirestoreResult<{ documents: string[] }>> {
+    async fetchFromCollection(collection: string): Promise<string[] | ErrorResponse> {
         try {
             const snapshot = await this.db.collection(collection).get();
             const documentIds = snapshot.docs.map((doc) => doc.id);
-            return {
-                success: true,
-                documents: documentIds,
-            };
+            return documentIds;
         } catch (error) {
             logger.error(`Error fetching documents from Firestore: ${error}`);
-            return { success: false, error: `Failed to fetch documents: ${error}`, documents: [] };
+            return { error: `Failed to fetch documents: ${error}` };
         }
     }
 
@@ -47,24 +42,21 @@ class FirestoreService {
      *
      * @param {string} collection - The name of the Firestore collection.
      * @param {string} documentId - The ID of the document to retrieve.
-     * @returns {Promise<FirestoreResult<{ document?: any }>>} - A promise that resolves to the document data.
+     * @returns {Promise<any | ErrorResponse>} - A promise that resolves to the document data or an error response.
      */
-    async fetchDocumentById(collection: string, documentId: string): Promise<FirestoreResult<{ document?: any }>> {
+    async fetchDocumentById(collection: string, documentId: string): Promise<any | ErrorResponse> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
             const doc = await docRef.get();
 
             if (!doc.exists) {
-                return { success: false, error: 'Document not found' };
+                return { error: 'Document not found' };
             }
 
-            return { 
-                success: true, 
-                document: { id: doc.id, ...doc.data() } 
-            };
+            return doc.data();
         } catch (error) {
             logger.error(`Error fetching document from Firestore: ${error}`);
-            return { success: false, error: `Failed to fetch document: ${error}` };
+            return { error: `Failed to fetch document: ${error}` };
         }
     }
 
@@ -73,26 +65,26 @@ class FirestoreService {
      *
      * @param {string} collection - The name of the Firestore collection.
      * @param {string} documentId - The ID of the document to delete.
-     * @returns {Promise<FirestoreResult<{}>>} - A promise that resolves to an object indicating the success of the deletion operation.
+     * @returns {Promise<{success: true; message: string} | ErrorResponse>} - A promise that resolves to a success object or an error response.
      */
     async deleteDocumentById(
         collection: string,
         documentId: string,
-    ): Promise<FirestoreResult<{}>> {
+    ): Promise<{ success: true; message: string } | ErrorResponse> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
 
             // Check if document exists before deleting
             const doc = await docRef.get();
             if (!doc.exists) {
-                return { success: false, error: 'Document not found' };
+                return { error: 'Document not found' };
             }
 
             await docRef.delete();
             return { success: true, message: 'Document deleted successfully' };
         } catch (error) {
             logger.error(`Error deleting document from Firestore: ${error}`);
-            return { success: false, error: `Failed to delete document: ${error}` };
+            return { error: `Failed to delete document: ${error}` };
         }
     }
 
@@ -101,39 +93,39 @@ class FirestoreService {
      *
      * @param {string} collection - The name of the Firestore collection.
      * @param {string} documentId - The ID of the document to fetch categories from.
-     * @returns {Promise<FirestoreResult<{ documentId?: string; categories?: string[] }>>} - A promise that resolves to an object containing the document ID and an array of category names.
+     * @returns {Promise<{ documentId: string; categories: string[] }>} - A promise that resolves to an object containing the document ID and an array of category names.
+     * @throws {Error} - Throws an error if document not found or has no data
      */
     async fetchCategoriesFromDocument(
         collection: string,
         documentId: string,
-    ): Promise<FirestoreResult<{ documentId?: string; categories?: string[] }>> {
+    ): Promise<{ documentId: string; categories: string[] }> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
             const doc = await docRef.get();
 
             if (!doc.exists) {
-                return { success: false, error: 'Document not found' };
+                throw new Error('Document not found');
             }
 
             const data = doc.data();
             if (!data) {
-                return { success: false, error: 'Document has no data' };
+                throw new Error('Document has no data');
             }
 
             // Get the data object which contains the arrays
             const docData = data.data || {};
 
             // Find all keys that are arrays
-            const categories = Object.keys(docData).filter(key => Array.isArray(docData[key]));
+            const categories = Object.keys(docData).filter((key) => Array.isArray(docData[key]));
 
             return {
-                success: true,
                 documentId,
                 categories,
             };
         } catch (error) {
             logger.error(`Error fetching categories from Firestore: ${error}`);
-            return { success: false, error: `Failed to fetch categories: ${error}` };
+            throw error;
         }
     }
 
@@ -143,54 +135,35 @@ class FirestoreService {
      * @param {string} collection - The name of the Firestore collection.
      * @param {string} documentId - The ID of the document to fetch data from.
      * @param {string} categoryName - The name of the category (array) to fetch data from.
-     * @returns {Promise<FirestoreResult<{ documentId?: string; categoryName?: string; data?: object[]; count?: number }>>} - A promise that resolves to an object containing the document ID, category name, and an array of category data.
+     * @returns {Promise<object[]>} - A promise that resolves to an array of category data.
+     * @throws {Error} - Throws an error if document not found or category doesn't exist
      */
-    async fetchCategoryData(
-        collection: string,
-        documentId: string,
-        categoryName: string,
-    ): Promise<FirestoreResult<{
-        documentId?: string;
-        categoryName?: string;
-        data?: object[];
-        count?: number;
-    }>> {
+    async fetchCategoryData(collection: string, documentId: string, categoryName: string): Promise<object[]> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
             const doc = await docRef.get();
 
             if (!doc.exists) {
-                return { success: false, error: 'Document not found' };
+                throw new Error('Document not found');
             }
 
             const data = doc.data();
             if (!data) {
-                return { success: false, error: 'Document has no data' };
+                throw new Error('Document has no data');
             }
 
             const docData = data.data || {};
 
             // Check if the category exists and is an array
             if (!docData[categoryName] || !Array.isArray(docData[categoryName])) {
-                return {
-                    success: false,
-                    error: `Category '${categoryName}' not found or is not an array`,
-                };
+                throw new Error(`Category '${categoryName}' not found or is not an array`);
             }
 
             // Sort the data in descending order by publishedDate or createdAt
-            const sortedData = this.sortCategoryData(docData[categoryName]);
-
-            return {
-                success: true,
-                documentId,
-                categoryName,
-                data: sortedData,
-                count: sortedData.length
-            };
+            return this.sortCategoryData(docData[categoryName]);
         } catch (error) {
             logger.error(`Error fetching category data from Firestore: ${error}`);
-            return { success: false, error: `Failed to fetch category data: ${error}` };
+            throw error;
         }
     }
 
