@@ -119,18 +119,18 @@ export function cleanDataFields(
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
-    // const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
+    const allowedFields = ['Title', 'Location', 'Logo', 'Sports', 'EventDate', 'Time'];
 
-    // Process object entries
     for (const [key, value] of Object.entries(data)) {
-        // Skip position/Position and _STATUS fields
-        if (key.toLowerCase() === 'position' || key === '_STATUS') continue;
+        if (!allowedFields.includes(key)) continue;
 
         if (Array.isArray(value)) {
             cleaned[key] = processArrayField(key, value, existingData, originUrl, docName);
         } else {
-            // Recursively clean nested objects
-            cleaned[key] = typeof value === 'object' ? cleanDataFields(value, existingData, originUrl, docName) : value;
+            cleaned[key] =
+                typeof value === 'object' && value !== null
+                    ? cleanDataFields(value, existingData, originUrl, docName)
+                    : value;
         }
     }
 
