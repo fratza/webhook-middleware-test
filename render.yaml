@@ -1,0 +1,12 @@
+services:
+  - type: web
+    name: webhook-middleware
+    env: node
+    buildCommand: npm install --production=false && npm run build:prod
+    startCommand: npm run start:prod
+    envVars:
+      - key: NODE_ENV
+        value: production
+      - key: PORT
+        value: 10000
+    healthCheckPath: /api/checkup

@@ -4,10 +4,10 @@
     "description": "Webhook middleware for handling and processing webhook events",
     "main": "app.js",
     "scripts": {
-        "start:prod": "node -r module-alias/register dist/app.js",
+        "start:prod": "node dist/app.js",
         "start:dev": "nodemon --exec ts-node src/app.ts",
-        "build:prod": "rimraf bundle && rimraf dist && tsc -p . && gulp bundle",
-        "build": "tsc",
+        "build:prod": "rimraf dist && tsc -p .",
+        "build": "rimraf dist && tsc",
         "test": "echo \"Error: no test specified\" && exit 1",
         "pretty": "prettier --write \"./**/*.{html,js,jsx,mjs,cjs,ts,tsx,json,scss,css}\""
     },
@@ -43,6 +43,7 @@
         "husky": "^9.1.7",
         "nodemon": "^3.1.4",
         "prettier": "^3.4.2",
+        "rimraf": "^5.0.5",
         "ts-node": "^10.9.2",
         "typescript": "^5.8.3"
     },
