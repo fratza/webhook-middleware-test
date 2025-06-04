@@ -50,9 +50,12 @@ export class BrowseAIService {
             await this.storeCapturedLists(batch, docName, originUrl, task.capturedLists);
         }
 
+        // We can't access internal properties of the batch, so just log the commit
         logger.info('[Firestore] Committing batch write...');
+        const startTime = Date.now();
         await batch.commit();
-        logger.info('[Firestore] Batch write successful!');
+        const duration = Date.now() - startTime;
+        logger.info(`[Firestore] Batch write successful! Completed in ${duration}ms`);
 
         return {
             success: true,
@@ -88,16 +91,20 @@ export class BrowseAIService {
         const processedData = cleanDataFields(textsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
+            logger.info(`[Texts] Document '${docName}' exists, updating with new data from ${originUrl}`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(textsRef, appendData);
+            logger.info(`[Texts] Updated document '${docName}' with merged data`);
         } else {
             // Document doesn't exist, create new document
+            logger.info(`[Texts] Creating new document '${docName}' with data from ${originUrl}`);
             const prepData = {
                 data: {
                     ...processedData,
                 },
             };
             batch.set(textsRef, prepData);
+            logger.info(`[Texts] Created new document '${docName}' with ${Object.keys(processedData).length} fields`);
         }
     }
 
@@ -126,16 +133,24 @@ export class BrowseAIService {
         const processedData = cleanDataFields(screenshotsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
+            logger.info(`[Screenshots] Document '${docName}' already exists, updating data...`);
+
+            // Merge with existing data
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(screenshotsRef, appendData);
+            logger.info(`[Screenshots] Updated document '${docName}' with merged data`);
         } else {
             // Document doesn't exist, create new document
+            logger.info(`[Screenshots] Creating new document '${docName}' with data from ${originUrl}`);
             const prepData = {
                 data: {
                     ...processedData,
                 },
             };
             batch.set(screenshotsRef, prepData);
+            logger.info(
+                `[Screenshots] Created new document '${docName}' with ${Object.keys(processedData).length} fields`,
+            );
         }
 
         logger.info(`[Screenshots] Prepared for storage with ID: ${docName}`);
@@ -172,6 +187,17 @@ export class BrowseAIService {
             // Merge with existing data
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(listsRef, appendData);
+
+            // Log the fields being updated
+            const fieldCount = Object.keys(processedData).length;
+            logger.info(`[Lists] Updated document '${docName}' with ${fieldCount} fields`);
+
+            // Log details about arrays being updated
+            Object.entries(processedData).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    logger.info(`[Lists] Field '${key}' contains ${value.length} items`);
+                }
+            });
         } else {
             // Document doesn't exist, create new document
             const prepData = {
@@ -180,6 +206,17 @@ export class BrowseAIService {
                 },
             };
             batch.set(listsRef, prepData);
+
+            // Log the fields being created
+            const fieldCount = Object.keys(processedData).length;
+            logger.info(`[Lists] Created new document '${docName}' with ${fieldCount} fields`);
+
+            // Log details about arrays being created
+            Object.entries(processedData).forEach(([key, value]) => {
+                if (Array.isArray(value)) {
+                    logger.info(`[Lists] New field '${key}' contains ${value.length} items`);
+                }
+            });
         }
 
         logger.info(`[Lists] Prepared for storage with ID: ${docName}`);

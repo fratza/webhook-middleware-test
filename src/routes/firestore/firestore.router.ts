@@ -109,7 +109,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/category=:subcategory', async (re
         let matchedCategory: string;
         try {
             const result = await firestoreService.fetchCategoriesFromDocument(collection, documentId);
-            
+
             // Find the actual category name with correct case
             const subcategoryLower = subcategory.toLowerCase();
             const foundCategory = result.categories?.find((category) => category.toLowerCase() === subcategoryLower);
@@ -120,7 +120,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentId/category=:subcategory', async (re
                     availableCategories: result.categories,
                 });
             }
-            
+
             matchedCategory = foundCategory;
         } catch (error) {
             return res.status(404).json({ error: (error as Error).message });

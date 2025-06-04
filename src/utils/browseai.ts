@@ -14,7 +14,10 @@ export function appendNewData(
     originUrl: string,
 ): any {
     const existingData = docSnapshot.data();
-    if (!existingData) return { data: processedData };
+    if (!existingData) {
+        logger.info(`[DB Insert] Creating new document with ${Object.keys(processedData).length} fields from ${originUrl}`);
+        return { data: processedData };
+    }
 
     // Create a deep copy of the existing data to work with
     const mergedData = JSON.parse(JSON.stringify(existingData));
@@ -22,6 +25,8 @@ export function appendNewData(
     // Ensure base structure exists
     if (!mergedData.data) mergedData.data = {};
 
+    logger.info(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
+    
     // Process each key in the processed data
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
@@ -29,13 +34,18 @@ export function appendNewData(
         // If the key already exists in the existing data and both are arrays
         if (mergedData.data[key] && Array.isArray(mergedData.data[key]) && Array.isArray(newValue)) {
             // Append the new array items to the existing array
+            const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
+            logger.info(`[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`);
         } else {
             // Otherwise, replace or add the key-value pair
+            const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
+            logger.info(`[DB Update] ${isNew ? 'Added new' : 'Updated'} field '${key}' with ${Array.isArray(newValue) ? `${newValue.length} items` : 'value'}`);
         }
     });
 
+    logger.info(`[DB Update] Completed update for document ${docSnapshot.id} with ${Object.keys(processedData).length} fields`);
     return mergedData;
 }
 
