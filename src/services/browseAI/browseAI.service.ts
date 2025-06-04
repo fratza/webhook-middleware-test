@@ -14,7 +14,7 @@ export class BrowseAIService {
 
     private db: Firestore;
     public task: any; // Using any instead of object to avoid property access issues
-    
+
     constructor() {
         this.db = db;
     }
@@ -35,15 +35,15 @@ export class BrowseAIService {
 
         console.log('[BrowseAI] Processing captured data...');
 
-        if (this.task.capturedTexts) {
+        if (this.task.capturedTexts && Object.keys(this.task.capturedTexts).length > 0) {
             await this.storeCapturedTexts(batch, docName, originUrl, this.task.capturedTexts);
         }
 
-        if (this.task.capturedScreenshots) {
+        if (this.task.capturedScreenshots && Object.keys(this.task.capturedScreenshots).length > 0) {
             await this.storeCapturedScreenshots(batch, docName, originUrl, this.task.capturedScreenshots);
         }
 
-        if (this.task.capturedLists) {
+        if (this.task.capturedLists && Object.keys(this.task.capturedLists).length > 0) {
             await this.storeCapturedLists(batch, docName, originUrl, this.task.capturedLists);
         }
 
@@ -87,12 +87,16 @@ export class BrowseAIService {
         const processedData = cleanDataFields(textsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            console.log(`[DB UPDATE] Updating document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`);
+            console.log(
+                `[DB UPDATE] Updating document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`,
+            );
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(textsRef, appendData);
         } else {
             // Document doesn't exist, create new document
-            console.log(`[DB INSERT] Creating new document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`);
+            console.log(
+                `[DB INSERT] Creating new document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`,
+            );
             const prepData = {
                 data: {
                     ...processedData,
@@ -100,7 +104,7 @@ export class BrowseAIService {
             };
             batch.set(textsRef, prepData);
         }
-        
+
         // Log array fields for better visibility
         Object.entries(processedData).forEach(([key, value]) => {
             if (Array.isArray(value)) {
@@ -127,13 +131,13 @@ export class BrowseAIService {
         const screenshotsRef = this.db.collection('captured_screenshots').doc(docName);
         const screenshotsData = convertToFirestoreFormat(screenshots);
         const timestamp = admin.firestore.Timestamp.fromDate(new Date());
-        
+
         const docSnapshot = await screenshotsRef.get();
         const existingData = docSnapshot.exists ? docSnapshot.data() : null;
-        
+
         // Process the screenshots data
         const processedData = cleanDataFields(screenshotsData, existingData, originUrl, docName);
-        
+
         if (docSnapshot.exists) {
             console.log(`[Screenshots] Updating existing document '${docName}'`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
@@ -172,11 +176,15 @@ export class BrowseAIService {
         const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            console.log(`[DB UPDATE] Updating document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`);
+            console.log(
+                `[DB UPDATE] Updating document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
+            );
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(listsRef, appendData);
         } else {
-            console.log(`[DB INSERT] Creating new document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`);
+            console.log(
+                `[DB INSERT] Creating new document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
+            );
             const prepData = {
                 data: {
                     ...processedData,
@@ -184,7 +192,7 @@ export class BrowseAIService {
             };
             batch.set(listsRef, prepData);
         }
-        
+
         // Log array fields for better visibility
         Object.entries(processedData).forEach(([key, value]) => {
             if (Array.isArray(value)) {

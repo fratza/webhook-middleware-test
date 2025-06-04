@@ -119,12 +119,12 @@ export function cleanDataFields(
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
-    const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
+    // const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
 
     // Process object entries
     for (const [key, value] of Object.entries(data)) {
-        // Only include allowed fields
-        if (!allowedFields.includes(key)) continue;
+        // Skip position/Position and _STATUS fields
+        if (key.toLowerCase() === 'position' || key === '_STATUS') continue;
 
         if (Array.isArray(value)) {
             cleaned[key] = processArrayField(key, value, existingData, originUrl, docName);
