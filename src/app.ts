@@ -79,15 +79,17 @@ process.on('uncaughtException', (error: Error) => {
     logger.error(`[ERROR - Uncaught Exception]: ${error.message}`);
 });
 
-/**
- * Start server if in development or serverless mode
- */
-if (env === 'dev') {
-    app.listen(port, () => {
-        logger.info(`[DEVELOPMENT SERVER] Server is running on http://localhost:${port}`);
-    });
-} else {
-    /** Serverless */
-    logger.info(`[AWS LAMBDA SERVERLESS] Running on serverless`);
-    module.exports.handler = serverless(app);
-}
+app.listen(port, () => {
+    console.log(`Webhook middleware running on port ${port}`);
+});
+
+// AWS SETUP
+// if (env === 'dev') {
+//     app.listen(port, () => {
+//         logger.info(`[DEVELOPMENT SERVER] Server is running on http://localhost:${port}`);
+//     });
+// } else {
+//     /** Serverless */
+//     logger.info(`[AWS LAMBDA SERVERLESS] Running on serverless`);
+//     module.exports.handler = serverless(app);
+// }
