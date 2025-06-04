@@ -22,12 +22,12 @@ const firestoreService = new FirestoreService(db);
  * @param {Response} res - The Express response object used to send responses.
  * @returns {void} Sends a JSON response indicating success or failure.
  */
-WEBHOOK_ROUTER.post('/api/webhook/:webhookId', async (req: Request, res: Response) => {
+WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
     const webhookId = req.params.webhookId;
     console.log('[Webhook] Incoming request at URL:', webhookId);
 
     // BrowseAI Webhook
-    if (webhookId === 'browseAI') {
+    if (webhookId.toLowerCase() === 'browseai') {
         try {
             logger.info('[BrowseAI Webhook] Received request');
 
@@ -226,15 +226,15 @@ WEBHOOK_ROUTER.get('/api/webhook/status', (req: Request, res: Response) => {
     try {
         // Get server uptime
         const uptime = process.uptime();
-        
+
         // Format uptime
         const days = Math.floor(uptime / 86400);
         const hours = Math.floor((uptime % 86400) / 3600);
         const minutes = Math.floor((uptime % 3600) / 60);
         const seconds = Math.floor(uptime % 60);
-        
+
         const formattedUptime = `${days}d ${hours}h ${minutes}m ${seconds}s`;
-        
+
         // Return status information
         res.json({
             status: 'ok',
@@ -242,14 +242,14 @@ WEBHOOK_ROUTER.get('/api/webhook/status', (req: Request, res: Response) => {
             timestamp: new Date().toISOString(),
             uptime: formattedUptime,
             version: process.env.npm_package_version || '1.0.0',
-            environment: process.env.NODE_ENV || 'development'
+            environment: process.env.NODE_ENV || 'development',
         });
     } catch (error) {
         logger.error(`Error checking webhook status: ${error}`);
-        res.status(500).json({ 
+        res.status(500).json({
             status: 'error',
             message: 'Failed to check webhook status',
-            error: (error as Error).message
+            error: (error as Error).message,
         });
     }
 });
