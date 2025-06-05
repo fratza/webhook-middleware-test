@@ -161,20 +161,46 @@ export function processArrayField(
         processArrayItem(item, key, index, existingData, originUrl, docName),
     );
 
-    // Deduplicate items before adding them
     const deduplicated = deduplicateItems(processedItems);
 
-    // If the array already exists, append to it; otherwise create a new one
-    if (existingArray && Array.isArray(existingArray)) {
-        // Deduplicate against existing items
+    if (deduplicated.length === 0) return [];
+
+    if (Array.isArray(existingArray)) {
+        if (areArraysEquivalent(deduplicated, existingArray)) {
+            return existingArray;
+        }
+
         const finalItems = deduplicateAgainstExisting(deduplicated, existingArray);
 
-        logFilteringResults(deduplicated, finalItems);
+        if (finalItems.length === 0) return existingArray;
 
         return [...existingArray, ...finalItems];
     }
 
     return deduplicated;
+}
+
+/**
+ * Check if two arrays are equivalent (contain the same items)
+ * @param array1 First array to compare
+ * @param array2 Second array to compare
+ * @returns True if arrays contain the same items, false otherwise
+ */
+export function areArraysEquivalent(array1: any[], array2: any[]): boolean {
+    if (!Array.isArray(array1) || !Array.isArray(array2)) return false;
+    if (array1.length !== array2.length) return false;
+
+    // Create a map of unique keys for all items in array1
+    const array1Keys = new Set(array1.map((item) => createUniqueKeyForItem(item)));
+
+    // Check if all items in array2 have matching keys in array1
+    for (const item of array2) {
+        const key = createUniqueKeyForItem(item);
+        if (!array1Keys.has(key)) return false;
+    }
+
+    // All items matched
+    return true;
 }
 
 /**
@@ -427,17 +453,4 @@ export function deduplicateAgainstExisting(newItems: any[], existingItems: any[]
         const uniqueKey = createUniqueKeyForItem(item);
         return !existingMap.has(uniqueKey);
     });
-}
-
-/**
- * Log filtering results
- * @param before Items before filtering
- * @param after Items after filtering
- */
-export function logFilteringResults(before: any[], after: any[]): void {
-    if (before.length !== after.length) {
-        console.log(
-            `[BrowseAI Webhook] Filtered out ${before.length - after.length} duplicate items from ${before.length} total items`,
-        );
-    }
 }

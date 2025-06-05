@@ -1,12 +1,9 @@
 import { Router, Request, Response } from 'express';
 import logger from '../../middlewares/logger';
-import { admin, db } from '../../config/firebase';
 import { BrowseAIService } from '../../services/browseAI/browseAI.service';
-import FirestoreService from '../../services/firestore';
 
 const WEBHOOK_ROUTER = Router();
 const browseAIService = new BrowseAIService();
-const firestoreService = new FirestoreService(db);
 
 /**
  * Handles incoming POST requests to dynamic webhook endpoints under `/api/webhook/:webhookId`.
