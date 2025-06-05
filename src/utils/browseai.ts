@@ -333,10 +333,31 @@ export function parseEventDate(eventDateStr: string): { startDate: string; endDa
  * @returns Unique key string
  */
 export function createUniqueKeyForItem(item: any): string {
-    // For olemisssports.com, we consider Title, EventDate, Location, and Sports as key fields
-    const keyFields = ['Title', 'EventDate', 'Location', 'Sports'].filter((field) => item[field]);
+    if (!item || typeof item !== 'object') {
+        return String(item);
+    }
 
-    return keyFields.map((field) => `${field}:${item[field]}`).join('|');
+    let keyFields = [];
+
+    const isOleMiss = item.originUrl && item.originUrl.includes('olemisssports.com');
+
+    if (isOleMiss) {
+        keyFields = ['Title', 'EventDate', 'Location', 'Sports'].filter((field) => item[field]);
+    } else {
+        keyFields = ['Title', 'Location', 'Date', 'Time'].filter((field) => item[field]);
+    }
+
+    // If we couldn't find any key fields, use all available fields
+    if (keyFields.length === 0) {
+        keyFields = Object.keys(item).filter(
+            (key) => typeof item[key] !== 'object' && key !== 'uid' && item[key] !== undefined && item[key] !== null,
+        );
+    }
+
+    // Create a unique key by combining the values of all key fields
+    const keyString = keyFields.map((field) => `${field}:${item[field]}`).join('|');
+
+    return keyString;
 }
 
 /**
