@@ -368,11 +368,24 @@ export function createUniqueKeyForItem(item: any): string {
 export function deduplicateItems(items: any[]): any[] {
     if (!Array.isArray(items) || items.length <= 1) return items;
 
+    // Filter out items with null titles first
+    const filteredItems = items.filter((item) => {
+        // Skip items where Title is null or undefined
+        if ((item && item.Title === null) || item.Title === undefined) {
+            console.log('[BrowseAI Webhook] Skipping item with null or undefined Title');
+            return false;
+        }
+        return true;
+    });
+
+    // If all items were filtered out, return empty array
+    if (filteredItems.length === 0) return [];
+
     // Create a map to track unique items
     const uniqueMap = new Map<string, boolean>();
     const result: any[] = [];
 
-    for (const item of items) {
+    for (const item of filteredItems) {
         const uniqueKey = createUniqueKeyForItem(item);
 
         // If we haven't seen this unique key before, add it to the result
