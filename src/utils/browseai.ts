@@ -1,12 +1,6 @@
 import * as admin from 'firebase-admin';
 
-/**
- * Appends new data to existing document data
- * @param docSnapshot The document snapshot containing existing data
- * @param processedData The new processed data to append
- * @param originUrl The origin URL
- * @returns The merged data structure
- */
+// Appends new data to existing document data
 export function appendNewData(
     docSnapshot: admin.firestore.DocumentSnapshot,
     processedData: any,
@@ -20,28 +14,28 @@ export function appendNewData(
         return { data: processedData };
     }
 
-    // Create a deep copy of the existing data to work with
+
     const mergedData = JSON.parse(JSON.stringify(existingData));
 
-    // Ensure base structure exists
+
     if (!mergedData.data) mergedData.data = {};
 
     console.log(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
 
-    // Process each key in the processed data
+
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
 
-        // If the key already exists in the existing data and both are arrays
+
         if (mergedData.data[key] && Array.isArray(mergedData.data[key]) && Array.isArray(newValue)) {
-            // Append the new array items to the existing array
+
             const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
             console.log(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
         } else {
-            // Otherwise, replace or add the key-value pair
+
             const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
             console.log(
@@ -56,22 +50,16 @@ export function appendNewData(
     return mergedData;
 }
 
-/**
- * Extract a domain identifier from a URL
- * @param url The URL to extract from
- * @returns The extracted domain identifier
- */
+// Extract a domain identifier from a URL
 export function extractDomainIdentifier(url: string): string {
     let docName = 'unknown';
 
     try {
         if (url && url !== 'unknown') {
-            const urlObj = new URL(url as string); // Parse the URL
-            const parts = urlObj.hostname.split('.'); // Split the hostname
-
-            // Extract the last 2 segments of the domain
+            const urlObj = new URL(url as string);
+            const parts = urlObj.hostname.split('.');
             if (parts.length >= 2) {
-                const domainParts = parts.slice(-2); // e.g., ['espn', 'com']
+                const domainParts = parts.slice(-2);
                 docName = domainParts.join('.');
             } else {
                 docName = urlObj.hostname;
@@ -84,29 +72,22 @@ export function extractDomainIdentifier(url: string): string {
     return docName;
 }
 
-/**
- * Clean data by removing unwanted fields at all nesting levels
- * and add optional Image URL field if needed
- * @param data The data to clean
- * @param existingData Optional existing data to check for arrays
- * @param originUrl The origin URL to include in each item
- * @returns Cleaned data with unwanted fields removed and optional fields added
- */
+// Clean data by removing unwanted fields and add optional Image URL field
 export function cleanDataFields(
     data: any,
     existingData: any = null,
     originUrl: string = 'unknown',
     docName: string = 'unknown',
 ): any {
-    // Handle null, undefined or primitive values
+
     if (!data || typeof data !== 'object') return data;
 
-    // Handle arrays
+
     if (Array.isArray(data)) {
         return data.map((item) => cleanDataFields(item, existingData, originUrl, docName));
     }
 
-    // Handle objects
+
     return processObjectFields(data, existingData, originUrl, docName);
 }
 

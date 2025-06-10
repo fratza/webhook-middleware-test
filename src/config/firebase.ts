@@ -1,14 +1,9 @@
 import * as admin from 'firebase-admin';
-import { ENV } from '../environments/environment';
 
-// Initialize Firebase Admin
-admin.initializeApp({
-  credential: admin.credential.cert({
-    projectId: ENV.firebase.projectId,
-    clientEmail: ENV.firebase.clientEmail,
-    privateKey: ENV.firebase.privateKey,
-  }),
-});
+// Initialize Firebase Admin without explicit credentials
+// This will use the GOOGLE_APPLICATION_CREDENTIALS environment variable
+// or the default service account when deployed to Google Cloud
+admin.initializeApp();
 
 const db = admin.firestore();
 

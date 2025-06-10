@@ -5,26 +5,16 @@ type ErrorResponse = {
     error: string;
 };
 
-/**
- * Service for handling Firestore operations
- */
+// Service for handling Firestore operations
 class FirestoreService {
     private db: Firestore;
 
-    /**
-     * Constructor for FirestoreService
-     * @param db - Firestore instance
-     */
+    // Constructor for FirestoreService
     constructor(db: Firestore) {
         this.db = db;
     }
 
-    /**
-     * Fetches all document IDs from a specified Firestore collection.
-     *
-     * @param {string} collection - The name of the Firestore collection to query.
-     * @returns {Promise<string[] | ErrorResponse>} - A promise that resolves to an array of document IDs or an error response.
-     */
+    // Fetches all document IDs from a collection
     async fetchFromCollection(collection: string): Promise<string[] | ErrorResponse> {
         try {
             const snapshot = await this.db.collection(collection).get();
@@ -36,14 +26,7 @@ class FirestoreService {
         }
     }
 
-    /**
-     * Fetches a single document by ID from a specified Firestore collection.
-     * Unwraps the data structure to return the array directly without 'data' and category wrappers.
-     *
-     * @param {string} collection - The name of the Firestore collection.
-     * @param {string} documentId - The ID of the document to retrieve.
-     * @returns {Promise<any | ErrorResponse>} - A promise that resolves to the document data or an error response.
-     */
+    // Fetches a document by ID and unwraps the data structure
     async fetchDocumentById(collection: string, documentId: string): Promise<any | ErrorResponse> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
@@ -55,21 +38,21 @@ class FirestoreService {
 
             const docData = doc.data();
             
-            // Check if data has the nested structure we want to unwrap
+
             if (docData && docData.data) {
-                // Find the first array in the data object (e.g., OleSports)
+
                 const dataKeys = Object.keys(docData.data);
                 for (const key of dataKeys) {
                     if (Array.isArray(docData.data[key])) {
-                        return docData.data[key]; // Return the array directly
+                        return docData.data[key];
                     }
                 }
                 
-                // If no arrays found, return the data object without the wrapper
+
                 return docData.data;
             }
 
-            // Return the original data if it doesn't have the expected structure
+
             return docData;
         } catch (error) {
             console.error(`Error fetching document from Firestore: ${error}`);
@@ -77,13 +60,7 @@ class FirestoreService {
         }
     }
 
-    /**
-     * Deletes a document by ID from a specified Firestore collection.
-     *
-     * @param {string} collection - The name of the Firestore collection.
-     * @param {string} documentId - The ID of the document to delete.
-     * @returns {Promise<{success: true; message: string} | ErrorResponse>} - A promise that resolves to a success object or an error response.
-     */
+    // Deletes a document by ID
     async deleteDocumentById(
         collection: string,
         documentId: string,
@@ -91,7 +68,7 @@ class FirestoreService {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
 
-            // Check if document exists before deleting
+
             const doc = await docRef.get();
             if (!doc.exists) {
                 return { error: 'Document not found' };
@@ -105,14 +82,7 @@ class FirestoreService {
         }
     }
 
-    /**
-     * Fetches array names (categories) from a document in a specified Firestore collection.
-     *
-     * @param {string} collection - The name of the Firestore collection.
-     * @param {string} documentId - The ID of the document to fetch categories from.
-     * @returns {Promise<{ documentId: string; categories: string[] }>} - A promise that resolves to an object containing the document ID and an array of category names.
-     * @throws {Error} - Throws an error if document not found or has no data
-     */
+    // Fetches category names from a document
     async fetchCategoriesFromDocument(
         collection: string,
         documentId: string,
@@ -146,15 +116,7 @@ class FirestoreService {
         }
     }
 
-    /**
-     * Fetches data from a specific category in a document from a specified Firestore collection.
-     *
-     * @param {string} collection - The name of the Firestore collection.
-     * @param {string} documentId - The ID of the document to fetch data from.
-     * @param {string} categoryName - The name of the category (array) to fetch data from.
-     * @returns {Promise<object[]>} - A promise that resolves to an array of category data.
-     * @throws {Error} - Throws an error if document not found or category doesn't exist
-     */
+    // Fetches data from a specific category in a document
     async fetchCategoryData(collection: string, documentId: string, categoryName: string): Promise<object[]> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
@@ -171,12 +133,12 @@ class FirestoreService {
 
             const docData = data.data || {};
 
-            // Check if the category exists and is an array
+
             if (!docData[categoryName] || !Array.isArray(docData[categoryName])) {
                 throw new Error(`Category '${categoryName}' not found or is not an array`);
             }
 
-            // Sort the data in descending order by publishedDate or createdAt
+
             return this.sortCategoryData(docData[categoryName]);
         } catch (error) {
             console.error(`Error fetching category data from Firestore: ${error}`);
@@ -184,51 +146,40 @@ class FirestoreService {
         }
     }
 
-    /**
-     * Sorts category data by date fields in descending order (newest first)
-     * @param items Array of items to sort
-     * @returns Sorted array
-     */
+    // Sorts category data by date fields (newest first)
     private sortCategoryData(items: any[]): any[] {
         return [...items].sort((a, b) => {
-            // Try to use publishedDate first, then fall back to createdAt
+
             const dateA = a.publishedDate || a.createdAt || a.createdAtFormatted || 0;
             const dateB = b.publishedDate || b.createdAt || b.createdAtFormatted || 0;
 
-            // If the dates are Firestore timestamps, convert them to milliseconds
+
             const timeA = dateA && typeof dateA.toMillis === 'function' ? dateA.toMillis() : dateA;
             const timeB = dateB && typeof dateB.toMillis === 'function' ? dateB.toMillis() : dateB;
 
-            // Sort in descending order (newest first)
+
             return timeB - timeA;
         });
     }
 
-    /**
-     * Updates the imageURL field for a document with a specific uid
-     * 
-     * @param collection - Collection name to search in
-     * @param uid - Unique identifier of the document to update
-     * @param imageURL - New image URL to set
-     * @returns Success message or error response
-     */
+    // Updates the imageURL field for a document with specific uid
     async updateImageURL(
         collection: string,
         uid: string,
         imageURL: string
     ): Promise<{ success: true; message: string } | ErrorResponse> {
         try {
-            // Find document by uid
+
             const querySnapshot = await this.db.collection(collection)
                 .where('uid', '==', uid)
-                .limit(1) // Optimize by limiting to 1 result
+                .limit(1)
                 .get();
 
             if (querySnapshot.empty) {
                 return { error: `No document found with uid: ${uid}` };
             }
 
-            // Update the document
+
             const docRef = querySnapshot.docs[0].ref;
             await docRef.update({ imageURL });
 

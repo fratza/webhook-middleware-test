@@ -11,11 +11,11 @@ FIRESTORE_ROUTER.get('/:collection', async (req: Request, res: Response) => {
     try {
         const { collection } = req.params;
         const result = await firestoreService.fetchFromCollection(collection);
-        
+
         if ('error' in result) {
             return res.status(500).json({ error: result.error });
         }
-        
+
         res.json(result);
     } catch (error) {
         logger.error(`Error fetching from Firestore: ${error}`);
@@ -44,7 +44,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentName', async (req: Request, res: Res
 FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request, res: Response) => {
     try {
         const { collection, documentName } = req.params;
-        
+
         try {
             const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
             res.json(result);
@@ -61,15 +61,13 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request,
 FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (req: Request, res: Response) => {
     try {
         const { collection, documentName, subcategory } = req.params;
-        
+
         // Step 1: Find the correct case for the category
         let matchedCategory: string;
         try {
             const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
             const subcategoryLower = subcategory.toLowerCase();
-            const foundCategory = result.categories?.find(category => 
-                category.toLowerCase() === subcategoryLower
-            );
+            const foundCategory = result.categories?.find((category) => category.toLowerCase() === subcategoryLower);
 
             if (!foundCategory) {
                 return res.status(404).json({
@@ -85,9 +83,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (
 
         // Step 2: Fetch data using the correctly cased category name
         try {
-            const categoryResult = await firestoreService.fetchCategoryData(
-                collection, documentName, matchedCategory
-            );
+            const categoryResult = await firestoreService.fetchCategoryData(collection, documentName, matchedCategory);
             res.json({ data: categoryResult, count: categoryResult.length });
         } catch (error) {
             return res.status(404).json({ error: (error as Error).message });
@@ -97,6 +93,67 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (
         res.status(500).json({ error: 'Failed to fetch subcategory data from Firestore' });
     }
 });
+
+// Get limited data from a specific subcategory with count parameter
+FIRESTORE_ROUTER.get(
+    '/:collection/:documentName/category/:subcategory/count=:count',
+    async (req: Request, res: Response) => {
+        try {
+            const { collection, documentName, subcategory, count } = req.params;
+            const limit = parseInt(count, 10);
+
+            // Validate count parameter
+            if (isNaN(limit) || limit <= 0) {
+                return res.status(400).json({
+                    error: 'Count parameter must be a positive number',
+                });
+            }
+
+            // Step 1: Find the correct case for the category
+            let matchedCategory: string;
+            try {
+                const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
+                const subcategoryLower = subcategory.toLowerCase();
+                const foundCategory = result.categories?.find(
+                    (category) => category.toLowerCase() === subcategoryLower,
+                );
+
+                if (!foundCategory) {
+                    return res.status(404).json({
+                        error: `Category '${subcategory}' not found`,
+                        availableCategories: result.categories,
+                    });
+                }
+
+                matchedCategory = foundCategory;
+            } catch (error) {
+                return res.status(404).json({ error: (error as Error).message });
+            }
+
+            try {
+                const categoryResult = await firestoreService.fetchCategoryData(
+                    collection,
+                    documentName,
+                    matchedCategory,
+                );
+
+                // Limit the results based on count parameter
+                const limitedResults = categoryResult.slice(0, limit);
+
+                res.json({
+                    data: limitedResults,
+                    count: limitedResults.length,
+                    totalAvailable: categoryResult.length,
+                });
+            } catch (error) {
+                return res.status(404).json({ error: (error as Error).message });
+            }
+        } catch (error) {
+            logger.error(`Error fetching limited subcategory data from Firestore: ${error}`);
+            res.status(500).json({ error: 'Failed to fetch limited subcategory data from Firestore' });
+        }
+    },
+);
 
 // Delete a document by ID
 FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: Response) => {
@@ -123,8 +180,8 @@ FIRESTORE_ROUTER.put('/:collection/update-image', async (req: Request, res: Resp
 
         // Validate required fields
         if (!uid || !imageURL) {
-            return res.status(400).json({ 
-                error: 'Missing required fields: uid and imageURL are required' 
+            return res.status(400).json({
+                error: 'Missing required fields: uid and imageURL are required',
             });
         }
 
