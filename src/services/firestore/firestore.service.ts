@@ -1,4 +1,5 @@
-import { Firestore, WriteBatch } from 'firebase-admin/firestore';
+import { db } from '../../config/firebase';
+import { Firestore } from 'firebase-admin/firestore';
 
 // Define error response type
 type ErrorResponse = {
@@ -13,9 +14,8 @@ class FirestoreService {
 
     /**
      * Constructor for FirestoreService
-     * @param db - Firestore instance
      */
-    constructor(db: Firestore) {
+    constructor() {
         this.db = db;
     }
 
@@ -23,7 +23,7 @@ class FirestoreService {
      * Fetches all document IDs from a specified Firestore collection.
      *
      * @param {string} collection - The name of the Firestore collection to query.
-     * @returns {Promise<string[] | ErrorResponse>} - A promise that resolves to an array of document IDs or an error response.
+     * @returns {Promise<string[] | ErrorResponse>} - A promise that resolves to an array of document IDs or an error response
      */
     async fetchFromCollection(collection: string): Promise<string[] | ErrorResponse> {
         try {
@@ -54,7 +54,7 @@ class FirestoreService {
             }
 
             const docData = doc.data();
-            
+
             // Check if data has the nested structure we want to unwrap
             if (docData && docData.data) {
                 // Find the first array in the data object (e.g., OleSports)
@@ -64,7 +64,7 @@ class FirestoreService {
                         return docData.data[key]; // Return the array directly
                     }
                 }
-                
+
                 // If no arrays found, return the data object without the wrapper
                 return docData.data;
             }

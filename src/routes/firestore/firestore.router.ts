@@ -1,10 +1,9 @@
 import express, { Request, Response, Router } from 'express';
-import { getFirestore } from 'firebase-admin/firestore';
 import FirestoreService from '../../services/firestore';
 import logger from '../../middlewares/logger';
 
 const FIRESTORE_ROUTER: Router = express.Router();
-const firestoreService = new FirestoreService(getFirestore());
+const firestoreService = new FirestoreService();
 
 /**
  * GET endpoint to fetch document IDs from a specified Firestore collection.
