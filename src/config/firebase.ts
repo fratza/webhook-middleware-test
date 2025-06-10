@@ -1,12 +1,19 @@
 import * as admin from 'firebase-admin';
+import { ENV } from '../environments/environment';
 
-// Initialize Firebase Admin with cloud-provided credentials
-// This assumes environment variables are properly set in the cloud environment
+// Initialize Firebase Admin with explicit project ID
 try {
-    // Initialize with no explicit parameters
-    // In cloud environments, this will automatically use the default credentials
-    admin.initializeApp();
-    console.log('Firebase initialized with cloud environment credentials');
+    // For development, we need to explicitly set the project ID
+    admin.initializeApp({
+        projectId: ENV.firebase.projectId || 'default-project-id',
+    });
+
+    console.log(`Firebase initialized with project ID: ${ENV.firebase.projectId || 'default-project-id'}`);
+
+    // Verify that we have a project ID
+    if (!ENV.firebase.projectId) {
+        console.warn('WARNING: FIREBASE_PROJECT_ID environment variable is not set');
+    }
 } catch (error) {
     console.error('Failed to initialize Firebase:', error);
     throw error;
