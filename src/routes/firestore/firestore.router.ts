@@ -6,24 +6,16 @@ import logger from '../../middlewares/logger';
 const FIRESTORE_ROUTER: Router = express.Router();
 const firestoreService = new FirestoreService(getFirestore());
 
-/**
- * GET endpoint to fetch document IDs from a specified Firestore collection.
- *
- * @route GET /:collection
- * @param {Request} req - Express request object, expects `collection` as a route parameter.
- * @param {Response} res - Express response object used to send back JSON data or error.
- *
- * @returns {JSON} - Returns an array of document IDs from the specified Firestore collection.
- *
- * @throws {500} - If fetching document IDs fails, responds with a 500 status and error message.
- */
+// Get all document IDs from a collection
 FIRESTORE_ROUTER.get('/:collection', async (req: Request, res: Response) => {
     try {
         const { collection } = req.params;
         const result = await firestoreService.fetchFromCollection(collection);
+        
         if ('error' in result) {
             return res.status(500).json({ error: result.error });
         }
+        
         res.json(result);
     } catch (error) {
         logger.error(`Error fetching from Firestore: ${error}`);
@@ -31,22 +23,10 @@ FIRESTORE_ROUTER.get('/:collection', async (req: Request, res: Response) => {
     }
 });
 
-/**
- * GET endpoint to fetch a specific document by ID from a specified Firestore collection.
- *
- * @route GET /:collection/:documentId
- * @param {Request} req - Express request object, expects `collection` and `documentId` as route parameters.
- * @param {Response} res - Express response object used to return the document or an error message.
- *
- * @returns {JSON} - Returns the document data if found.
- *
- * @throws {404} - If the document is not found in the specified collection.
- * @throws {500} - If an error occurs while fetching the document.
- */
+// Get a specific document by ID
 FIRESTORE_ROUTER.get('/:collection/:documentName', async (req: Request, res: Response) => {
     try {
         const { collection, documentName } = req.params;
-
         const result = await firestoreService.fetchDocumentById(collection, documentName);
 
         if ('error' in result) {
@@ -60,22 +40,11 @@ FIRESTORE_ROUTER.get('/:collection/:documentName', async (req: Request, res: Res
     }
 });
 
-/**
- * GET endpoint to fetch categories from a specific document in a Firestore collection.
- *
- * @route GET /:collection/:documentId/category
- * @param {Request} req - Express request object, expects `collection` and `documentId` as route parameters.
- * @param {Response} res - Express response object used to return the categories or an error message.
- *
- * @returns {JSON} - Returns a result object containing categories if successful.
- *
- * @throws {404} - If categories cannot be fetched or document is not found (based on service result).
- * @throws {500} - If an internal error occurs during the fetch operation.
- */
+// Get all categories from a document
 FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request, res: Response) => {
     try {
         const { collection, documentName } = req.params;
-
+        
         try {
             const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
             res.json(result);
@@ -88,31 +57,19 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request,
     }
 });
 
-/**
- * GET endpoint to fetch data from a specific subcategory of a document in a Firestore collection.
- * The subcategory is matched case-insensitively against the document's available categories.
- *
- * @route GET /:collection/:documentId/category=:subcategory
- * @param {Request} req - Express request object, expects `collection`, `documentId`, and `subcategory` as route parameters.
- * @param {Response} res - Express response object used to return subcategory data or an error message.
- *
- * @returns {JSON} - Returns subcategory data if a case-insensitive match is found.
- *
- * @throws {404} - If the document, categories, or specified subcategory is not found.
- * @throws {500} - If an internal error occurs during the fetch operation.
- */
+// Get data from a specific subcategory (case-insensitive matching)
 FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (req: Request, res: Response) => {
     try {
         const { collection, documentName, subcategory } = req.params;
-
-        // Make subcategory case-insensitive by converting to lowercase
+        
+        // Step 1: Find the correct case for the category
         let matchedCategory: string;
         try {
             const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
-
-            // Find the actual category name with correct case
             const subcategoryLower = subcategory.toLowerCase();
-            const foundCategory = result.categories?.find((category) => category.toLowerCase() === subcategoryLower);
+            const foundCategory = result.categories?.find(category => 
+                category.toLowerCase() === subcategoryLower
+            );
 
             if (!foundCategory) {
                 return res.status(404).json({
@@ -126,9 +83,11 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (
             return res.status(404).json({ error: (error as Error).message });
         }
 
-        // Use the correctly cased category name for the data fetch
+        // Step 2: Fetch data using the correctly cased category name
         try {
-            const categoryResult = await firestoreService.fetchCategoryData(collection, documentName, matchedCategory);
+            const categoryResult = await firestoreService.fetchCategoryData(
+                collection, documentName, matchedCategory
+            );
             res.json({ data: categoryResult, count: categoryResult.length });
         } catch (error) {
             return res.status(404).json({ error: (error as Error).message });
@@ -139,22 +98,10 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (
     }
 });
 
-/**
- * DELETE endpoint to remove a specific document from a Firestore collection.
- *
- * @route DELETE /:collection/:documentId
- * @param {Request} req - Express request object. Expects `collection` and `documentId` as route parameters.
- * @param {Response} res - Express response object used to return deletion status or an error message.
- *
- * @returns {JSON} - Returns a result object indicating successful deletion.
- *
- * @throws {404} - If the document could not be found or deleted.
- * @throws {500} - If an internal server error occurs during the deletion process.
- */
+// Delete a document by ID
 FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: Response) => {
     try {
         const { collection, documentName } = req.params;
-
         const result = await firestoreService.deleteDocumentById(collection, documentName);
 
         if ('error' in result) {
@@ -165,6 +112,32 @@ FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: 
     } catch (error) {
         logger.error(`Error deleting document from Firestore: ${error}`);
         res.status(500).json({ error: 'Failed to delete document from Firestore' });
+    }
+});
+
+// Update imageURL for a document with specific uid
+FIRESTORE_ROUTER.put('/:collection/update-image', async (req: Request, res: Response) => {
+    try {
+        const { collection } = req.params;
+        const { uid, imageURL } = req.body;
+
+        // Validate required fields
+        if (!uid || !imageURL) {
+            return res.status(400).json({ 
+                error: 'Missing required fields: uid and imageURL are required' 
+            });
+        }
+
+        const result = await firestoreService.updateImageURL(collection, uid, imageURL);
+
+        if ('error' in result) {
+            return res.status(404).json({ error: result.error });
+        }
+
+        res.json(result);
+    } catch (error) {
+        logger.error(`Error updating imageURL in Firestore: ${error}`);
+        res.status(500).json({ error: 'Failed to update imageURL in Firestore' });
     }
 });
 

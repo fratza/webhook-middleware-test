@@ -203,6 +203,44 @@ class FirestoreService {
             return timeB - timeA;
         });
     }
+
+    /**
+     * Updates the imageURL field for a document with a specific uid
+     * 
+     * @param collection - Collection name to search in
+     * @param uid - Unique identifier of the document to update
+     * @param imageURL - New image URL to set
+     * @returns Success message or error response
+     */
+    async updateImageURL(
+        collection: string,
+        uid: string,
+        imageURL: string
+    ): Promise<{ success: true; message: string } | ErrorResponse> {
+        try {
+            // Find document by uid
+            const querySnapshot = await this.db.collection(collection)
+                .where('uid', '==', uid)
+                .limit(1) // Optimize by limiting to 1 result
+                .get();
+
+            if (querySnapshot.empty) {
+                return { error: `No document found with uid: ${uid}` };
+            }
+
+            // Update the document
+            const docRef = querySnapshot.docs[0].ref;
+            await docRef.update({ imageURL });
+
+            return { 
+                success: true, 
+                message: `Successfully updated imageURL for document with uid: ${uid}` 
+            };
+        } catch (error) {
+            console.error(`Error updating imageURL in Firestore: ${error}`);
+            return { error: `Failed to update imageURL: ${error}` };
+        }
+    }
 }
 
 export default FirestoreService;
