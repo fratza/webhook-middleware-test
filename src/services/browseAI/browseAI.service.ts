@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore';
 import { convertToFirestoreFormat } from '../../utils/firestore';
 import { BrowseAIWebhookData } from '../../interfaces';
 import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai';
+import logger from '../../middlewares/logger';
 
 export class BrowseAIService {
     /**
@@ -20,8 +21,8 @@ export class BrowseAIService {
     }
 
     public async processWebhookData(webhookData: BrowseAIWebhookData): Promise<Object> {
-        console.log('[BrowseAI] Starting to process incoming request...');
-        console.log('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
+        logger.info('[BrowseAI] Starting to process incoming request...');
+        logger.info('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
 
         this.task = webhookData?.task;
         const inputParams = this.task.inputParameters || {};
@@ -34,7 +35,7 @@ export class BrowseAIService {
 
         const batch = db.batch();
 
-        console.log('[BrowseAI] Processing captured data...');
+        logger.info('[BrowseAI] Processing captured data...');
 
         if (this.task.capturedTexts && Object.keys(this.task.capturedTexts).length > 0) {
             await this.storeCapturedTexts(batch, docName, originUrl, this.task.capturedTexts);
@@ -49,11 +50,11 @@ export class BrowseAIService {
         }
 
         // We can't access internal properties of the batch, so just log the commit
-        console.log('[Firestore] Committing batch write...');
+        logger.info('[Firestore] Committing batch write...');
         const startTime = Date.now();
         await batch.commit();
         const duration = Date.now() - startTime;
-        console.log(`[Firestore] Batch write successful! Completed in ${duration}ms`);
+        logger.info(`[Firestore] Batch write successful! Completed in ${duration}ms`);
 
         return {
             success: true,
@@ -77,7 +78,7 @@ export class BrowseAIService {
         originUrl: string,
         texts: any,
     ): Promise<void> {
-        console.log('[Texts] Processing captured texts...');
+        logger.info('[Texts] Processing captured texts...');
         const textsRef = this.db.collection('captured_texts').doc(docName);
         const textsData = convertToFirestoreFormat(texts);
 
@@ -88,14 +89,14 @@ export class BrowseAIService {
         const processedData = cleanDataFields(textsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            console.log(
+            logger.info(
                 `[DB UPDATE] Updating document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`,
             );
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(textsRef, appendData);
         } else {
             // Document doesn't exist, create new document
-            console.log(
+            logger.info(
                 `[DB INSERT] Creating new document '${docName}' in collection 'captured_texts' with ${Object.keys(processedData).length} fields`,
             );
             const prepData = {
@@ -109,7 +110,7 @@ export class BrowseAIService {
         // Log array fields for better visibility
         Object.entries(processedData).forEach(([key, value]) => {
             if (Array.isArray(value)) {
-                console.log(`[DB Field] '${key}' contains ${value.length} items`);
+                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
             }
         });
     }
@@ -128,7 +129,7 @@ export class BrowseAIService {
         originUrl: string,
         screenshots: any,
     ): Promise<void> {
-        console.log('[Screenshots] Processing captured screenshots...');
+        logger.info('[Screenshots] Processing captured screenshots...');
         const screenshotsRef = this.db.collection('captured_screenshots').doc(docName);
         const screenshotsData = convertToFirestoreFormat(screenshots);
         const timestamp = admin.firestore.Timestamp.fromDate(new Date());
@@ -140,11 +141,11 @@ export class BrowseAIService {
         const processedData = cleanDataFields(screenshotsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            console.log(`[Screenshots] Updating existing document '${docName}'`);
+            logger.info(`[Screenshots] Updating existing document '${docName}'`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(screenshotsRef, appendData);
         } else {
-            console.log(`[Screenshots] Creating new document '${docName}'`);
+            logger.info(`[Screenshots] Creating new document '${docName}'`);
             batch.set(screenshotsRef, {
                 data: processedData,
                 timestamp,
@@ -166,7 +167,7 @@ export class BrowseAIService {
         originUrl: string,
         lists: any,
     ): Promise<void> {
-        console.log('[Lists] Processing captured lists...');
+        logger.info('[Lists] Processing captured lists...');
 
         const listsRef = this.db.collection('captured_lists').doc(docName);
         const listsData = convertToFirestoreFormat(lists);
@@ -177,13 +178,13 @@ export class BrowseAIService {
         const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            console.log(
+            logger.info(
                 `[DB UPDATE] Updating document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
             );
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(listsRef, appendData);
         } else {
-            console.log(
+            logger.info(
                 `[DB INSERT] Creating new document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
             );
             const prepData = {
@@ -197,20 +198,20 @@ export class BrowseAIService {
         // Log array fields for better visibility
         Object.entries(processedData).forEach(([key, value]) => {
             if (Array.isArray(value)) {
-                console.log(`[DB Field] '${key}' contains ${value.length} items`);
+                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
             }
         });
     }
 
     public static async fetchFromCollection(collection: string): Promise<string[]> {
-        console.log(`[BrowseAI] Fetching from collection ${collection}...`);
+        logger.info(`[BrowseAI] Fetching from collection ${collection}...`);
         try {
             const collectionRef = db.collection(collection);
             const snapshot = await collectionRef.get();
             const documentIds = snapshot.docs.map((doc) => doc.id);
             return documentIds;
         } catch (error) {
-            console.error(`Error fetching from collection ${collection}:`, error);
+            logger.error(`Error fetching from collection ${collection}:`, error);
             throw error;
         }
     }
@@ -224,7 +225,7 @@ export class BrowseAIService {
      * @throws {Error} - If the document does not exist or the fetch fails.
      */
     public static async fetchDocumentById(collection: string, documentId: string): Promise<{ id: string; data: any }> {
-        console.log(`[BrowseAI] Fetching document ${documentId} from collection ${collection}...`);
+        logger.info(`[BrowseAI] Fetching document ${documentId} from collection ${collection}...`);
         try {
             const docRef = db.collection(collection).doc(documentId);
             const docSnapshot = await docRef.get();
@@ -238,7 +239,7 @@ export class BrowseAIService {
                 data: docSnapshot.data(),
             };
         } catch (error) {
-            console.error(`Error fetching document ${documentId} from collection ${collection}:`, error);
+            logger.error(`Error fetching document ${documentId} from collection ${collection}:`, error);
             throw error;
         }
     }
@@ -255,7 +256,7 @@ export class BrowseAIService {
         collection: string,
         documentId: string,
     ): Promise<{ success: boolean; deletedAt: string }> {
-        console.log(`[BrowseAI] Deleting document ${documentId} from collection ${collection}...`);
+        logger.info(`[BrowseAI] Deleting document ${documentId} from collection ${collection}...`);
         try {
             const docRef = db.collection(collection).doc(documentId);
             const docSnapshot = await docRef.get();
@@ -266,7 +267,7 @@ export class BrowseAIService {
 
             await docRef.delete();
             const deletedAt = new Date().toISOString();
-            console.log(
+            logger.info(
                 `[BrowseAI] Successfully deleted document ${documentId} from collection ${collection} at ${deletedAt}`,
             );
 
@@ -275,7 +276,7 @@ export class BrowseAIService {
                 deletedAt,
             };
         } catch (error) {
-            console.error(`Error deleting document ${documentId} from collection ${collection}:`, error);
+            logger.error(`Error deleting document ${documentId} from collection ${collection}:`, error);
             throw error;
         }
     }

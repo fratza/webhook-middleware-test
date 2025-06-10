@@ -1,6 +1,13 @@
 import * as admin from 'firebase-admin';
+import logger from '../middlewares/logger';
 
-// Appends new data to existing document data
+/**
+ * Appends new data to existing document data
+ * @param docSnapshot The document snapshot containing existing data
+ * @param processedData The new processed data to append
+ * @param originUrl The origin URL
+ * @returns The merged data structure
+ */
 export function appendNewData(
     docSnapshot: admin.firestore.DocumentSnapshot,
     processedData: any,
@@ -8,77 +15,99 @@ export function appendNewData(
 ): any {
     const existingData = docSnapshot.data();
     if (!existingData) {
-        console.log(
+        logger.info(
             `[DB Insert] Creating new document with ${Object.keys(processedData).length} fields from ${originUrl}`,
         );
         return { data: processedData };
     }
 
+    // Create a deep copy of the existing data to work with
     const mergedData = JSON.parse(JSON.stringify(existingData));
 
+    // Ensure base structure exists
     if (!mergedData.data) mergedData.data = {};
 
-    console.log(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
+    logger.info(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
 
+    // Process each key in the processed data
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
 
+        // If the key already exists in the existing data and both are arrays
         if (mergedData.data[key] && Array.isArray(mergedData.data[key]) && Array.isArray(newValue)) {
+            // Append the new array items to the existing array
             const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
-            console.log(
+            logger.info(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
         } else {
+            // Otherwise, replace or add the key-value pair
             const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
-            console.log(
+            logger.info(
                 `[DB Update] ${isNew ? 'Added new' : 'Updated'} field '${key}' with ${Array.isArray(newValue) ? `${newValue.length} items` : 'value'}`,
             );
         }
     });
 
-    console.log(
+    logger.info(
         `[DB Update] Completed update for document ${docSnapshot.id} with ${Object.keys(processedData).length} fields`,
     );
     return mergedData;
 }
 
-// Extract a domain identifier from a URL
+/**
+ * Extract a domain identifier from a URL
+ * @param url The URL to extract from
+ * @returns The extracted domain identifier
+ */
 export function extractDomainIdentifier(url: string): string {
     let docName = 'unknown';
 
     try {
         if (url && url !== 'unknown') {
-            const urlObj = new URL(url as string);
-            const parts = urlObj.hostname.split('.');
+            const urlObj = new URL(url as string); // Parse the URL
+            const parts = urlObj.hostname.split('.'); // Split the hostname
+
+            // Extract the last 2 segments of the domain
             if (parts.length >= 2) {
-                const domainParts = parts.slice(-2);
+                const domainParts = parts.slice(-2); // e.g., ['espn', 'com']
                 docName = domainParts.join('.');
             } else {
                 docName = urlObj.hostname;
             }
         }
     } catch (error) {
-        console.warn(`Invalid URL: ${url}`);
+        logger.warn(`Invalid URL: ${url}`);
     }
 
     return docName;
 }
 
-// Clean data by removing unwanted fields and add optional Image URL field
+/**
+ * Clean data by removing unwanted fields at all nesting levels
+ * and add optional Image URL field if needed
+ * @param data The data to clean
+ * @param existingData Optional existing data to check for arrays
+ * @param originUrl The origin URL to include in each item
+ * @returns Cleaned data with unwanted fields removed and optional fields added
+ */
 export function cleanDataFields(
     data: any,
     existingData: any = null,
     originUrl: string = 'unknown',
     docName: string = 'unknown',
 ): any {
+    // Handle null, undefined or primitive values
     if (!data || typeof data !== 'object') return data;
 
+    // Handle arrays
     if (Array.isArray(data)) {
         return data.map((item) => cleanDataFields(item, existingData, originUrl, docName));
     }
 
+    // Handle objects
     return processObjectFields(data, existingData, originUrl, docName);
 }
 
@@ -91,6 +120,7 @@ export function cleanDataFields(
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
+    // const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
 
     // Process object entries
     for (const [key, value] of Object.entries(data)) {
@@ -265,10 +295,10 @@ export function processEventDate(
                 newLabel['StartDate'] = dateInfo.startDate;
                 newLabel['EndDate'] = dateInfo.endDate;
 
-                console.log(`[BrowseAI Webhook] Processed date range: ${dateInfo.startDate} to ${dateInfo.endDate}`);
+                logger.info(`[BrowseAI Webhook] Processed date range: ${dateInfo.startDate} to ${dateInfo.endDate}`);
             }
         } catch (error) {
-            console.error(`[BrowseAI Webhook] Error processing date for olemisssports.com:`, error);
+            logger.error(`[BrowseAI Webhook] Error processing date for olemisssports.com:`, error);
         }
     }
 }
@@ -344,6 +374,7 @@ export function createUniqueKeyForItem(item: any): string {
         keyFields = ['Title', 'Location', 'Date', 'Time'].filter((field) => item[field]);
     }
 
+    // If we couldn't find any key fields, use all available fields
     if (keyFields.length === 0) {
         keyFields = Object.keys(item).filter(
             (key) => typeof item[key] !== 'object' && key !== 'uid' && item[key] !== undefined && item[key] !== null,
@@ -368,7 +399,7 @@ export function deduplicateItems(items: any[]): any[] {
     const filteredItems = items.filter((item) => {
         // Skip items where Title is null or undefined
         if ((item && item.Title === null) || item.Title === undefined) {
-            console.log('[BrowseAI Webhook] Skipping item with null or undefined Title');
+            logger.info('[BrowseAI Webhook] Skipping item with null or undefined Title');
             return false;
         }
         return true;

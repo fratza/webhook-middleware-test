@@ -1,5 +1,10 @@
-import express, { Application, Request, Response, NextFunction } from 'express';
+// Load environment variables from .env file first, before other imports
 import dotenv from 'dotenv';
+// Configure dotenv at the very beginning
+dotenv.config({ path: './.env' });
+
+// Other imports
+import express, { Application, Request, Response, NextFunction } from 'express';
 import cors from 'cors';
 import helmet from 'helmet';
 import serverless from 'serverless-http';
@@ -15,9 +20,9 @@ import FIRESTORE_ROUTER from './routes/firestore';
 import process from 'process';
 
 /** Initialize environment and express */
-dotenv.config();
+// dotenv already configured above
 const env = process.env.NODE_ENV;
-const port = process.env.PORT || 4000;
+const port = process.env.PORT || 3000;
 const app: Application = express();
 
 /** Use helmet to secure Express apps by setting various HTTP headers */
@@ -80,16 +85,16 @@ process.on('uncaughtException', (error: Error) => {
 });
 
 app.listen(port, () => {
-    console.log(`Webhook middleware running on port ${port}`);
+    logger.info(`Webhook middleware running on port ${port}`);
 });
 
 // AWS SETUP
-// if (env === 'dev') {
-//     app.listen(port, () => {
-//         logger.info(`[DEVELOPMENT SERVER] Server is running on http://localhost:${port}`);
-//     });
-// } else {
-//     /** Serverless */
-//     logger.info(`[AWS LAMBDA SERVERLESS] Running on serverless`);
-//     module.exports.handler = serverless(app);
-// }
+if (env === 'local') {
+    app.listen(port, () => {
+        logger.info(`[LOCAL SERVER] Server is running on http://localhost:${port}`);
+    });
+} else {
+    /** Serverless */
+    logger.info(`[AWS LAMBDA SERVERLESS] Running on serverless`);
+    module.exports.handler = serverless(app);
+}

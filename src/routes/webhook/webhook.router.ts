@@ -21,7 +21,7 @@ const browseAIService = new BrowseAIService();
  */
 WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
     const webhookId = req.params.webhookId;
-    console.log('[Webhook] Incoming request at URL:', webhookId);
+    logger.info('[Webhook] Incoming request at URL:', webhookId);
 
     // BrowseAI Webhook
     if (webhookId.toLowerCase() === 'browseai') {
