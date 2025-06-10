@@ -119,7 +119,6 @@ export function cleanDataFields(
  */
 export function processObjectFields(data: any, existingData: any, originUrl: string, docName: string): any {
     const cleaned: any = {};
-    // const allowedFields = ['EventDate', 'Location', 'Logo', 'Sports', 'Time'];
 
     // Process object entries
     for (const [key, value] of Object.entries(data)) {
