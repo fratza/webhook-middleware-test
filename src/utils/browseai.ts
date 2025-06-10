@@ -14,28 +14,22 @@ export function appendNewData(
         return { data: processedData };
     }
 
-
     const mergedData = JSON.parse(JSON.stringify(existingData));
-
 
     if (!mergedData.data) mergedData.data = {};
 
     console.log(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
 
-
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
 
-
         if (mergedData.data[key] && Array.isArray(mergedData.data[key]) && Array.isArray(newValue)) {
-
             const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
             console.log(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
         } else {
-
             const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
             console.log(
@@ -79,14 +73,11 @@ export function cleanDataFields(
     originUrl: string = 'unknown',
     docName: string = 'unknown',
 ): any {
-
     if (!data || typeof data !== 'object') return data;
-
 
     if (Array.isArray(data)) {
         return data.map((item) => cleanDataFields(item, existingData, originUrl, docName));
     }
-
 
     return processObjectFields(data, existingData, originUrl, docName);
 }
@@ -353,7 +344,6 @@ export function createUniqueKeyForItem(item: any): string {
         keyFields = ['Title', 'Location', 'Date', 'Time'].filter((field) => item[field]);
     }
 
-    // If we couldn't find any key fields, use all available fields
     if (keyFields.length === 0) {
         keyFields = Object.keys(item).filter(
             (key) => typeof item[key] !== 'object' && key !== 'uid' && item[key] !== undefined && item[key] !== null,
