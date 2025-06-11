@@ -22,7 +22,6 @@ const browseAIService = new BrowseAIService();
 WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
     const webhookId = req.params.webhookId;
     console.log('[Webhook] Incoming request at URL:', webhookId);
-    console.log('[Webhook] Incoming request body:', req.body);
 
     // BrowseAI Webhook
     if (webhookId.toLowerCase() === 'browseai') {
@@ -34,7 +33,7 @@ WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
             res.json(result);
         } catch (error: any) {
             console.error('[BrowseAI Webhook] Error:', error);
-            
+
             // Check if it's a structured error with status code
             if (error && typeof error === 'object' && 'status' in error) {
                 const statusCode = error.status || 500;
@@ -44,7 +43,7 @@ WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
                     details: error.details || 'No additional details available',
                 });
             }
-            
+
             // Handle 400 Bad Request errors specifically
             if (error.message && error.message.includes('400')) {
                 return res.status(400).json({
@@ -53,7 +52,7 @@ WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
                     details: error.message || 'Invalid webhook data format',
                 });
             }
-            
+
             // Default to 500 for other errors
             res.status(500).json({
                 success: false,
