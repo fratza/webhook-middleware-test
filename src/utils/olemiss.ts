@@ -225,43 +225,30 @@ export function processOleMissItem(
     docName: string,
     originUrl: string,
 ): any {
-    // Check if EventDate exists and contains a month name
-    const monthRegex = /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)/i;
+    // Process DetailSrc if available
+    if (
+        processedItem.DetailSrc &&
+        typeof processedItem.DetailSrc === 'string' &&
+        processedItem.DetailSrc.includes('s-game-card-standard__header')
+    ) {
+        console.log('[OleMiss] Processing DetailSrc HTML content');
+        const gameDetails = extractGameDetails(processedItem.DetailSrc);
 
-    if (processedItem.EventDate && monthRegex.test(processedItem.EventDate)) {
-        // If EventDate contains a month, process it as a date range
-        console.log('[OleMiss] EventDate contains month, processing as date range:', processedItem.EventDate);
-        processEventDate(newLabel, 'EventDate', processedItem, key, docName, originUrl);
-    } else {
-        // If EventDate doesn't exist or doesn't contain a month, parse DetailSrc
-        if (
-            processedItem.DetailSrc &&
-            typeof processedItem.DetailSrc === 'string' &&
-            processedItem.DetailSrc.includes('s-game-card-standard__header')
-        ) {
-            console.log('[OleMiss] Processing DetailSrc HTML content');
-            const gameDetails = extractGameDetails(processedItem.DetailSrc);
+        // Add extracted details to their corresponding fields in the newLabel object
+        if (gameDetails.Score) {
+            newLabel.Score = gameDetails.Score;
+            console.log('[OleMiss] Extracted Score:', gameDetails.Score);
+        }
 
-            // Add extracted details to their corresponding fields in the newLabel object
-            if (gameDetails.Score) {
-                newLabel.Score = gameDetails.Score;
-                console.log('[OleMiss] Extracted Score:', gameDetails.Score);
-            }
+        // Extract date from DetailSrc and put it into EventDate
+        if (gameDetails.Date) {
+            newLabel.EventDate = gameDetails.Date;
+            console.log('[OleMiss] Extracted Date into EventDate:', gameDetails.Date);
+        }
 
-            if (gameDetails.Date) {
-                newLabel.Date = gameDetails.Date;
-                console.log('[OleMiss] Extracted Date:', gameDetails.Date);
-            }
-
-            if (gameDetails.Time) {
-                newLabel.Time = gameDetails.Time;
-                console.log('[OleMiss] Extracted Time:', gameDetails.Time);
-            }
-        } else if (processedItem.EventDate) {
-            // If EventDate exists but doesn't have a month and DetailSrc doesn't exist or isn't valid HTML
-            // Just pass through the original EventDate value
-            newLabel.EventDate = processedItem.EventDate;
-            console.log('[OleMiss] Using original EventDate value:', processedItem.EventDate);
+        if (gameDetails.Time) {
+            newLabel.Time = gameDetails.Time;
+            console.log('[OleMiss] Extracted Time:', gameDetails.Time);
         }
     }
 
