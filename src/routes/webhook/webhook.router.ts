@@ -32,14 +32,40 @@ WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
             const result = await browseAIService.processWebhookData(req.body);
 
             res.json(result);
-        } catch (error) {
+        } catch (error: any) {
             console.error('[BrowseAI Webhook] Error:', error);
-
+            
+            // Check if it's a structured error with status code
+            if (error && typeof error === 'object' && 'status' in error) {
+                const statusCode = error.status || 500;
+                return res.status(statusCode).json({
+                    success: false,
+                    error: error.message || 'Error processing BrowseAI webhook data',
+                    details: error.details || 'No additional details available',
+                });
+            }
+            
+            // Handle 400 Bad Request errors specifically
+            if (error.message && error.message.includes('400')) {
+                return res.status(400).json({
+                    success: false,
+                    error: 'Bad Request',
+                    details: error.message || 'Invalid webhook data format',
+                });
+            }
+            
+            // Default to 500 for other errors
             res.status(500).json({
                 success: false,
                 error: (error as Error).message || 'Error processing BrowseAI webhook data',
             });
         }
+    } else {
+        // Handle unknown webhook ID
+        res.status(404).json({
+            success: false,
+            error: `Unknown webhook ID: ${webhookId}`,
+        });
     }
 });
 

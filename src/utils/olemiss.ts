@@ -38,7 +38,6 @@ export function extractGameDetails(htmlContent: string): GameDetails {
                     .replace(/\s+/g, ' ')
                     .trim();
                 result.EventDate = rawDateStr;
-                console.log('[OleMiss Parser] Raw extracted event date string:', rawDateStr);
             },
         );
 
@@ -48,7 +47,6 @@ export function extractGameDetails(htmlContent: string): GameDetails {
             /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/,
             (match) => {
                 result.Date = match[1].trim();
-                console.log('[OleMiss Parser] Original date format extracted:', result.Date);
             },
         );
 
@@ -61,7 +59,7 @@ export function extractGameDetails(htmlContent: string): GameDetails {
             },
         );
 
-        console.log('[OleMiss Parser] Final extracted game details:', result);
+
     } catch (error) {
         console.error('[OleMiss Parser] Error extracting game details:', error);
     }
@@ -181,7 +179,7 @@ export function parseEventDate(eventDateStr: string): { startDate: string; endDa
         const startDate = `${currentYear}-${startMonth}-${startDay}`;
         const endDate = `${currentYear}-${endMonth}-${endDay}`;
 
-        console.log(`[OleMiss] Parsed event date range: ${startDate} to ${endDate} from "${eventDateStr}"`);
+
         return { startDate, endDate };
     }
 
@@ -257,7 +255,7 @@ export function processOleMissItem(
         return newLabel;
     }
 
-    console.log('[OleMiss] Processing DetailSrc HTML content');
+
 
     // First check if header-game-date is present in DetailSrc
     const headerGameDate = extractHeaderGameDate(processedItem.DetailSrc);
@@ -309,7 +307,7 @@ function extractHeaderGameDate(detailSrc: string): string | null {
                 .replace(/\s+/g, ' ') // Normalize spaces
                 .trim();
 
-            console.log('[OleMiss] Directly extracted header-game-date:', rawDateStr);
+
             return rawDateStr;
         }
     } catch (error) {
@@ -325,12 +323,12 @@ function extractHeaderGameDate(detailSrc: string): string | null {
 function processScoreAndTime(gameDetails: GameDetails, newLabel: any): void {
     if (gameDetails.Score) {
         newLabel.Score = gameDetails.Score;
-        console.log('[OleMiss] Extracted Score:', gameDetails.Score);
+
     }
 
     if (gameDetails.Time) {
         newLabel.Time = gameDetails.Time;
-        console.log('[OleMiss] Extracted Time:', gameDetails.Time);
+
     }
 }
 
@@ -345,7 +343,7 @@ function processDateInformation(gameDetails: GameDetails, newLabel: any): void {
     // Fallback to Date field if EventDate is not available
     else if (gameDetails.Date) {
         newLabel.EventDate = gameDetails.Date;
-        console.log('[OleMiss] Using original Date field for EventDate:', gameDetails.Date);
+
     }
 }
 
@@ -354,18 +352,18 @@ function processDateInformation(gameDetails: GameDetails, newLabel: any): void {
  */
 function processEventDateField(eventDateStr: string, newLabel: any): void {
     newLabel.EventDate = eventDateStr;
-    console.log('[OleMiss] Extracted date range into EventDate:', eventDateStr);
+
 
     // Try to parse the date string into standardized format
     const parsedDate = parseEventDate(eventDateStr);
     if (parsedDate) {
         newLabel.EventDate = parsedDate.startDate;
-        console.log('[OleMiss] Parsed start date:', parsedDate.startDate);
+
 
         // If the end date is different from the start date, include it
         if (parsedDate.endDate !== parsedDate.startDate) {
             newLabel.EventEndDate = parsedDate.endDate;
-            console.log('[OleMiss] Parsed end date:', parsedDate.endDate);
+
         }
     }
 }

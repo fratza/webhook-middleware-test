@@ -22,47 +22,70 @@ export class BrowseAIService {
 
     public async processWebhookData(webhookData: BrowseAIWebhookData): Promise<Object> {
         console.log('[BrowseAI] Starting to process incoming request...');
-        console.log('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
-
-        this.task = webhookData?.task;
-        const inputParams = this.task.inputParameters || {};
-        const [firstKey, firstValue] = Object.entries(inputParams)[0] || [];
-
-        const originUrl = (firstValue as string) || 'unknown';
-        const docName = extractDomainIdentifier(originUrl);
-
-        const timestamp = admin.firestore.Timestamp.fromDate(new Date());
-
-        const batch = db.batch();
-
-        console.log('[BrowseAI] Processing captured data...');
-
-        if (this.task.capturedTexts && Object.keys(this.task.capturedTexts).length > 0) {
-            await this.storeCapturedTexts(batch, docName, originUrl, this.task.capturedTexts);
+        
+        // Validate webhook data structure
+        if (!webhookData || !webhookData.task) {
+            const error = new Error('Invalid webhook data: Missing task information');
+            logger.error('[BrowseAI] Bad Request (400):', error);
+            throw {
+                status: 400,
+                message: 'Invalid webhook data structure',
+                details: 'The webhook payload is missing required task information'
+            };
         }
+        
+        try {
+            console.log('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
+            
+            this.task = webhookData.task;
+            const inputParams = this.task.inputParameters || {};
+            const [firstKey, firstValue] = Object.entries(inputParams)[0] || [];
 
-        if (this.task.capturedScreenshots && Object.keys(this.task.capturedScreenshots).length > 0) {
-            await this.storeCapturedScreenshots(batch, docName, originUrl, this.task.capturedScreenshots);
+            const originUrl = (firstValue as string) || 'unknown';
+            const docName = extractDomainIdentifier(originUrl);
+
+            const timestamp = admin.firestore.Timestamp.fromDate(new Date());
+
+            const batch = db.batch();
+
+            console.log('[BrowseAI] Processing captured data...');
+
+            if (this.task.capturedTexts && Object.keys(this.task.capturedTexts).length > 0) {
+                await this.storeCapturedTexts(batch, docName, originUrl, this.task.capturedTexts);
+            }
+
+            if (this.task.capturedScreenshots && Object.keys(this.task.capturedScreenshots).length > 0) {
+                await this.storeCapturedScreenshots(batch, docName, originUrl, this.task.capturedScreenshots);
+            }
+
+            if (this.task.capturedLists && Object.keys(this.task.capturedLists).length > 0) {
+                await this.storeCapturedLists(batch, docName, originUrl, this.task.capturedLists);
+            }
+
+            // We can't access internal properties of the batch, so just log the commit
+            console.log('[Firestore] Committing batch write...');
+            const startTime = Date.now();
+            await batch.commit();
+            const duration = Date.now() - startTime;
+            console.log(`[Firestore] Batch write successful! Completed in ${duration}ms`);
+
+            return {
+                success: true,
+                meta: {
+                    processedAt: timestamp.toDate().toISOString(),
+                    collections: ['captured_texts', 'captured_screenshots', 'captured_lists'],
+                },
+            };
+        } catch (error) {
+            // If it's already a structured error with status, rethrow it
+            if (error && typeof error === 'object' && 'status' in error) {
+                throw error;
+            }
+            
+            // Log and rethrow as a more detailed error
+            logger.error('[BrowseAI] Error processing webhook data:', error);
+            throw error;
         }
-
-        if (this.task.capturedLists && Object.keys(this.task.capturedLists).length > 0) {
-            await this.storeCapturedLists(batch, docName, originUrl, this.task.capturedLists);
-        }
-
-        // We can't access internal properties of the batch, so just log the commit
-        console.log('[Firestore] Committing batch write...');
-        const startTime = Date.now();
-        await batch.commit();
-        const duration = Date.now() - startTime;
-        console.log(`[Firestore] Batch write successful! Completed in ${duration}ms`);
-
-        return {
-            success: true,
-            meta: {
-                processedAt: timestamp.toDate().toISOString(),
-                collections: ['captured_texts', 'captured_screenshots', 'captured_lists'],
-            },
-        };
     }
 
     /**
