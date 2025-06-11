@@ -3,35 +3,131 @@
  */
 
 /**
+ * Formats a date string to the format "Jun 11(Wed)-Jun 13(Fri)"
+ * @param dateStr The date string to format
+ * @param durationDays Optional number of days for the event duration (default: 2)
+ * @returns Formatted date string
+ */
+export function formatEventDate(dateStr: string, durationDays: number = 2): string {
+    try {
+        // Clean up the input string
+        const cleanedStr = dateStr.trim();
+
+        // Check if the string already contains a date range with the format we want
+        const rangeRegex =
+            /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\([A-Za-z]{3}\)-(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\([A-Za-z]{3}\)/;
+        if (rangeRegex.test(cleanedStr)) {
+            console.log('[OleMiss Parser] Date already in correct format:', cleanedStr);
+            return cleanedStr; // Return as-is if already in correct format
+        }
+
+        // Parse the date string to a Date object
+        const date = new Date(cleanedStr);
+
+        // Check if the date is valid
+        if (isNaN(date.getTime())) {
+            console.error('[OleMiss Parser] Invalid date string:', dateStr);
+            return dateStr; // Return original if parsing fails
+        }
+
+        // Get the month abbreviation
+        const months = ['Jan', 'Feb', 'Mar', 'Apr', 'May', 'Jun', 'Jul', 'Aug', 'Sep', 'Oct', 'Nov', 'Dec'];
+        const month = months[date.getMonth()];
+
+        // Get the day of the month
+        const day = date.getDate();
+
+        // Get the day of the week abbreviation
+        const days = ['Sun', 'Mon', 'Tue', 'Wed', 'Thu', 'Fri', 'Sat'];
+        const dayOfWeek = days[date.getDay()];
+
+        // Format the start date as "Jun 11(Wed)"
+        const startDateFormatted = `${month} ${day}(${dayOfWeek})`;
+
+        // Create an end date based on the provided duration
+        const endDate = new Date(date);
+        endDate.setDate(date.getDate() + durationDays); // Add specified days for the event duration
+
+        const endMonth = months[endDate.getMonth()];
+        const endDay = endDate.getDate();
+        const endDayOfWeek = days[endDate.getDay()];
+
+        // Format the end date
+        const endDateFormatted = `${endMonth} ${endDay}(${endDayOfWeek})`;
+
+        // Combine into the format "Jun 11(Wed)-Jun 13(Fri)"
+        const formattedDateRange = `${startDateFormatted}-${endDateFormatted}`;
+
+        console.log(`[OleMiss Parser] Formatted date range: ${formattedDateRange} from original: ${dateStr}`);
+        return formattedDateRange;
+    } catch (error) {
+        console.error('[OleMiss Parser] Error formatting date:', error);
+        return dateStr; // Return original if formatting fails
+    }
+}
+
+/**
  * Extracts score, date, and time information from HTML content
  * @param htmlContent The HTML content to parse
- * @returns Object containing extracted score, date, and time
+ * @returns Object containing extracted score, date, and time or EventDate
  */
-export function extractGameDetails(htmlContent: string): { Score?: string; Date?: string; Time?: string } {
-    const result: { Score?: string; Date?: string; Time?: string } = {};
+export function extractGameDetails(htmlContent: string): {
+    Score?: string;
+    Date?: string;
+    Time?: string;
+    EventDate?: string;
+} {
+    const result: { Score?: string; Date?: string; Time?: string; EventDate?: string } = {};
 
     try {
-        // Extract Score
-        const scoreRegex = /data-test-id="s-game-card-standard__header-game-team-score">([^<]+)<\/span>/;
-        const scoreMatch = htmlContent.match(scoreRegex);
-        if (scoreMatch && scoreMatch[1]) {
-            result.Score = scoreMatch[1].trim();
-        }
+        // First check if game date is present
+        const gameDateRegex = /data-test-id="s-game-card-standard__header-game-date"/;
+        const gameDateExists = gameDateRegex.test(htmlContent);
 
-        // Extract Date
-        const dateRegex =
-            /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/;
-        const dateMatch = htmlContent.match(dateRegex);
-        if (dateMatch && dateMatch[1]) {
-            result.Date = dateMatch[1].trim();
-        }
+        if (gameDateExists) {
+            // Extract the date from the game date section and place it in EventDate field
+            const eventDateRegex =
+                /data-test-id="s-game-card-standard__header-game-date"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/;
+            const eventDateMatch = htmlContent.match(eventDateRegex);
+            if (eventDateMatch && eventDateMatch[1]) {
+                const extractedDate = eventDateMatch[1].trim();
 
-        // Extract Time
-        // Using a more compatible regex without the 's' flag
-        const timeRegex = /aria-label="Event Time"[^>]*>[\s\S]*?(\d+\s+[ap]\.m\.)<\/span>/;
-        const timeMatch = htmlContent.match(timeRegex);
-        if (timeMatch && timeMatch[1]) {
-            result.Time = timeMatch[1].trim();
+                // Try to determine if this is a tournament or multi-day event
+                // Look for keywords that might indicate a multi-day event
+                const isMultiDayEvent = /tournament|championship|invitational|classic|open/i.test(htmlContent);
+
+                // Format the date in the required format with appropriate duration
+                // Use 2 days for regular events, 3 days for tournaments/championships
+                const duration = isMultiDayEvent ? 3 : 2;
+                const formattedDate = formatEventDate(extractedDate, duration);
+                result.EventDate = formattedDate;
+                console.log('[OleMiss Parser] Extracted and formatted EventDate:', result.EventDate);
+            }
+        } else {
+            // If game date is not present, extract score, date, and time as before
+
+            // Extract Score
+            const scoreRegex = /data-test-id="s-game-card-standard__header-game-team-score">([^<]+)<\/span>/;
+            const scoreMatch = htmlContent.match(scoreRegex);
+            if (scoreMatch && scoreMatch[1]) {
+                result.Score = scoreMatch[1].trim();
+            }
+
+            // Extract Date
+            const dateRegex =
+                /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/;
+            const dateMatch = htmlContent.match(dateRegex);
+            if (dateMatch && dateMatch[1]) {
+                result.Date = dateMatch[1].trim();
+            }
+
+            // Extract Time
+            // Using a more compatible regex without the 's' flag
+            const timeRegex = /aria-label="Event Time"[^>]*>[\s\S]*?(\d+\s+[ap]\.m\.)<\/span>/;
+            const timeMatch = htmlContent.match(timeRegex);
+            if (timeMatch && timeMatch[1]) {
+                result.Time = timeMatch[1].trim();
+            }
         }
 
         console.log('[OleMiss Parser] Extracted game details:', result);
@@ -243,19 +339,25 @@ export function processOleMissItem(
             const gameDetails = extractGameDetails(processedItem.DetailSrc);
 
             // Add extracted details to their corresponding fields in the newLabel object
-            if (gameDetails.Score) {
-                newLabel.Score = gameDetails.Score;
-                console.log('[OleMiss] Extracted Score:', gameDetails.Score);
-            }
+            if (gameDetails.EventDate) {
+                newLabel.EventDate = gameDetails.EventDate;
+                console.log('[OleMiss] Extracted EventDate:', gameDetails.EventDate);
+            } else {
+                // If no EventDate was found, use the Score, Date, and Time fields
+                if (gameDetails.Score) {
+                    newLabel.Score = gameDetails.Score;
+                    console.log('[OleMiss] Extracted Score:', gameDetails.Score);
+                }
 
-            if (gameDetails.Date) {
-                newLabel.Date = gameDetails.Date;
-                console.log('[OleMiss] Extracted Date:', gameDetails.Date);
-            }
+                if (gameDetails.Date) {
+                    newLabel.Date = gameDetails.Date;
+                    console.log('[OleMiss] Extracted Date:', gameDetails.Date);
+                }
 
-            if (gameDetails.Time) {
-                newLabel.Time = gameDetails.Time;
-                console.log('[OleMiss] Extracted Time:', gameDetails.Time);
+                if (gameDetails.Time) {
+                    newLabel.Time = gameDetails.Time;
+                    console.log('[OleMiss] Extracted Time:', gameDetails.Time);
+                }
             }
         } else if (processedItem.EventDate) {
             // If EventDate exists but doesn't have a month and DetailSrc doesn't exist or isn't valid HTML
