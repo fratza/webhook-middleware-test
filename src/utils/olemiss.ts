@@ -7,8 +7,8 @@
  * @param htmlContent The HTML content to parse
  * @returns Object containing extracted score, date, and time
  */
-export function extractGameDetails(htmlContent: string): { Score?: string; Date?: string; Time?: string } {
-    const result: { Score?: string; Date?: string; Time?: string } = {};
+export function extractGameDetails(htmlContent: string): { Score?: string; Date?: string; Time?: string; EventDate?: string } {
+    const result: { Score?: string; Date?: string; Time?: string; EventDate?: string } = {};
 
     try {
         // Extract Score
@@ -18,20 +18,31 @@ export function extractGameDetails(htmlContent: string): { Score?: string; Date?
             result.Score = scoreMatch[1].trim();
         }
 
-        // Extract Date
-        const dateRegex =
-            /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/;
+        // First try to extract date range format (Jun 11 - Jun 13)
+        const dateRangeRegex = /data-test-id="s-game-card-standard__header-game-date"[^>]*>([^<]*?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^-]*?-[^<]*?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^<]*?)<\/p>/;
+        const dateRangeMatch = htmlContent.match(dateRangeRegex);
+        if (dateRangeMatch && dateRangeMatch[1]) {
+            // Clean up the date string by removing HTML tags and normalizing spaces
+            const rawDateStr = dateRangeMatch[1].replace(/<[^>]*>/g, ' ').replace(/\s+/g, ' ').trim();
+            result.EventDate = rawDateStr;
+            console.log('[OleMiss Parser] Raw extracted event date string:', rawDateStr);
+        }
+
+        // Also try the original date format as a fallback
+        const dateRegex = /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/;
         const dateMatch = htmlContent.match(dateRegex);
         if (dateMatch && dateMatch[1]) {
             result.Date = dateMatch[1].trim();
+            console.log('[OleMiss Parser] Original date format extracted:', result.Date);
         }
 
-        // Extract Time
-        // Using a more compatible regex without the 's' flag
-        const timeRegex = /aria-label="Event Time"[^>]*>[\s\S]*?(\d+\s+[ap]\.m\.)<\/span>/;
+        // Extract Time - Handle both specific times and "All Day" format
+        const timeRegex = /aria-label="Event Time"[^>]*>[\s\S]*?(?:(\d+\s+[ap]\.m\.)|All Day)<\/span>/;
         const timeMatch = htmlContent.match(timeRegex);
         if (timeMatch && timeMatch[1]) {
             result.Time = timeMatch[1].trim();
+        } else if (timeMatch) {
+            result.Time = "All Day";
         }
 
         console.log('[OleMiss Parser] Final extracted game details:', result);
@@ -240,10 +251,28 @@ export function processOleMissItem(
             console.log('[OleMiss] Extracted Score:', gameDetails.Score);
         }
 
-        // Extract date from DetailSrc and put it into EventDate
-        if (gameDetails.Date) {
+        // First check if we have the new date range format in EventDate
+        if (gameDetails.EventDate) {
+            newLabel.EventDate = gameDetails.EventDate;
+            console.log('[OleMiss] Extracted date range into EventDate:', gameDetails.EventDate);
+            
+            // If we have a date range, try to parse it with parseEventDate
+            const parsedDate = parseEventDate(gameDetails.EventDate);
+            if (parsedDate) {
+                newLabel.EventDate = parsedDate.startDate;
+                console.log('[OleMiss] Parsed start date:', parsedDate.startDate);
+                
+                // If the end date is different from the start date, include it
+                if (parsedDate.endDate !== parsedDate.startDate) {
+                    newLabel.EventEndDate = parsedDate.endDate;
+                    console.log('[OleMiss] Parsed end date:', parsedDate.endDate);
+                }
+            }
+        } 
+        // Fallback to the original Date field if EventDate is not available
+        else if (gameDetails.Date) {
             newLabel.EventDate = gameDetails.Date;
-            console.log('[OleMiss] Extracted Date into EventDate:', gameDetails.Date);
+            console.log('[OleMiss] Using original Date field for EventDate:', gameDetails.Date);
         }
 
         if (gameDetails.Time) {
