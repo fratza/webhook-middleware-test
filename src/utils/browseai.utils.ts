@@ -240,7 +240,7 @@ export function processArrayItem(
 
     // OLEMISSPORTS.COM
     if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
-        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports', 'Score_date'];
+        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports', 'DetailSrc'];
     }
 
     // Add all existing fields from the processed item, but only if they're in the allowed list
