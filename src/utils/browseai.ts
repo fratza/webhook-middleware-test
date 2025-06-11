@@ -15,7 +15,7 @@ export function appendNewData(
 ): any {
     const existingData = docSnapshot.data();
     if (!existingData) {
-        logger.info(
+        console.log(
             `[DB Insert] Creating new document with ${Object.keys(processedData).length} fields from ${originUrl}`,
         );
         return { data: processedData };
@@ -27,7 +27,7 @@ export function appendNewData(
     // Ensure base structure exists
     if (!mergedData.data) mergedData.data = {};
 
-    logger.info(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
+    console.log(`[DB Update] Updating document ${docSnapshot.id} with data from ${originUrl}`);
 
     // Process each key in the processed data
     Object.keys(processedData).forEach((key) => {
@@ -38,20 +38,20 @@ export function appendNewData(
             // Append the new array items to the existing array
             const originalLength = mergedData.data[key].length;
             mergedData.data[key] = [...mergedData.data[key], ...newValue];
-            logger.info(
+            console.log(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
         } else {
             // Otherwise, replace or add the key-value pair
             const isNew = mergedData.data[key] === undefined;
             mergedData.data[key] = newValue;
-            logger.info(
+            console.log(
                 `[DB Update] ${isNew ? 'Added new' : 'Updated'} field '${key}' with ${Array.isArray(newValue) ? `${newValue.length} items` : 'value'}`,
             );
         }
     });
 
-    logger.info(
+    console.log(
         `[DB Update] Completed update for document ${docSnapshot.id} with ${Object.keys(processedData).length} fields`,
     );
     return mergedData;
@@ -79,7 +79,7 @@ export function extractDomainIdentifier(url: string): string {
             }
         }
     } catch (error) {
-        logger.warn(`Invalid URL: ${url}`);
+        console.warn(`Invalid URL: ${url}`);
     }
 
     return docName;
@@ -399,7 +399,7 @@ export function deduplicateItems(items: any[]): any[] {
     const filteredItems = items.filter((item) => {
         // Skip items where Title is null or undefined
         if ((item && item.Title === null) || item.Title === undefined) {
-            logger.info('[BrowseAI Webhook] Skipping item with null or undefined Title');
+            console.log('[BrowseAI Webhook] Skipping item with null or undefined Title');
             return false;
         }
         return true;

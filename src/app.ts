@@ -41,15 +41,15 @@ app.use(express.urlencoded({ extended: true }));
  * @param {NextFunction} next - Express next middleware function
  */
 app.use('/', (req: Request, res: Response, next: NextFunction) => {
-    logger.info(`[INCOMING REQUEST] ${req.method} ${req.url}`);
+    console.log(`[INCOMING REQUEST] ${req.method} ${req.url}`);
     res.on('finish', () => {
-        logger.info(`[REQUEST SUCCESSFUL] ${req.method} ${req.url} with status ${res.statusCode}`);
+        console.log(`[REQUEST SUCCESSFUL] ${req.method} ${req.url} with status ${res.statusCode}`);
     });
     next();
 });
 
 /** Log environment variables */
-logger.info(`[ENVIRONMENT:PORT] ${env}:${port}`);
+console.log(`[ENVIRONMENT:PORT] ${env}:${port}`);
 
 /**
  * Route serving checkup controller.
@@ -78,23 +78,23 @@ app.use(errorHandler);
  * Global error handlers for unhandled exceptions and rejections
  */
 process.on('unhandledRejection', (reason: Error, promise: Promise<any>) => {
-    logger.error(`[ERROR - Unhandled Rejection]: ${reason}`);
+    console.error(`[ERROR - Unhandled Rejection]: ${reason}`);
 });
 process.on('uncaughtException', (error: Error) => {
-    logger.error(`[ERROR - Uncaught Exception]: ${error.message}`);
+    console.error(`[ERROR - Uncaught Exception]: ${error.message}`);
 });
 
 app.listen(port, () => {
-    logger.info(`Webhook middleware running on port ${port}`);
+    console.log(`Webhook middleware running on port ${port}`);
 });
 
 // AWS SETUP
 if (env === 'local') {
     app.listen(port, () => {
-        logger.info(`[LOCAL SERVER] Server is running on http://localhost:${port}`);
+        console.log(`[LOCAL SERVER] Server is running on http://localhost:${port}`);
     });
 } else {
     /** Serverless */
-    logger.info(`[AWS LAMBDA SERVERLESS] Running on serverless`);
+    console.log(`[AWS LAMBDA SERVERLESS] Running on serverless`);
     module.exports.handler = serverless(app);
 }

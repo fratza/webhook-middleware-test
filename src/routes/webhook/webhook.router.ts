@@ -21,19 +21,19 @@ const browseAIService = new BrowseAIService();
  */
 WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
     const webhookId = req.params.webhookId;
-    logger.info('[Webhook] Incoming request at URL:', webhookId);
-    logger.info('[Webhook] Incoming request body:', req.body);
+    console.log('[Webhook] Incoming request at URL:', webhookId);
+    console.log('[Webhook] Incoming request body:', req.body);
 
     // BrowseAI Webhook
     if (webhookId.toLowerCase() === 'browseai') {
         try {
-            logger.info('[BrowseAI Webhook] Received request');
+            console.log('[BrowseAI Webhook] Received request');
 
             const result = await browseAIService.processWebhookData(req.body);
 
             res.json(result);
         } catch (error) {
-            logger.error('[BrowseAI Webhook] Error:', error);
+            console.error('[BrowseAI Webhook] Error:', error);
 
             res.status(500).json({
                 success: false,
