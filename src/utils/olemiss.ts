@@ -80,17 +80,19 @@ export function extractGameDetails(htmlContent: string): {
     const result: { Score?: string; Date?: string; Time?: string; EventDate?: string } = {};
 
     try {
-        // First check if game date is present
-        const gameDateRegex = /data-test-id="s-game-card-standard__header-game-date"/;
-        const gameDateExists = gameDateRegex.test(htmlContent);
+        // Validation: First check if header game date is present
+        const headerGameDateRegex = /data-test-id="s-game-card-standard__header-game-date"/;
+        const headerGameDateExists = headerGameDateRegex.test(htmlContent);
 
-        if (gameDateExists) {
+        if (headerGameDateExists) {
+            console.log('[OleMiss Parser] Header game date found, extracting date for EventDate field');
             // Extract the date from the game date section and place it in EventDate field
             const eventDateRegex =
                 /data-test-id="s-game-card-standard__header-game-date"[^>]*>[\s\S]*?<span[^>]*>([^<]+)<\/span>/;
             const eventDateMatch = htmlContent.match(eventDateRegex);
             if (eventDateMatch && eventDateMatch[1]) {
                 const extractedDate = eventDateMatch[1].trim();
+                console.log('[OleMiss Parser] Successfully extracted date:', extractedDate);
 
                 // Try to determine if this is a tournament or multi-day event
                 // Look for keywords that might indicate a multi-day event
@@ -102,15 +104,19 @@ export function extractGameDetails(htmlContent: string): {
                 const formattedDate = formatEventDate(extractedDate, duration);
                 result.EventDate = formattedDate;
                 console.log('[OleMiss Parser] Extracted and formatted EventDate:', result.EventDate);
+            } else {
+                console.log('[OleMiss Parser] Header game date element found but failed to extract date text');
             }
         } else {
-            // If game date is not present, extract score, date, and time as before
+            console.log('[OleMiss Parser] No header game date found, proceeding with HTML parsing');
+            // If header game date is not present, proceed with HTML parsing
 
             // Extract Score
-            const scoreRegex = /data-test-id="s-game-card-standard__header-game-team-score">([^<]+)<\/span>/;
+            const scoreRegex = /data-test-id="s-game-card-standard__header-game-score">([^<]+)<\/span>/;
             const scoreMatch = htmlContent.match(scoreRegex);
             if (scoreMatch && scoreMatch[1]) {
                 result.Score = scoreMatch[1].trim();
+                console.log('[OleMiss Parser] Extracted Score:', result.Score);
             }
 
             // Extract Date
@@ -118,19 +124,30 @@ export function extractGameDetails(htmlContent: string): {
                 /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/;
             const dateMatch = htmlContent.match(dateRegex);
             if (dateMatch && dateMatch[1]) {
-                result.Date = dateMatch[1].trim();
+                const extractedDate = dateMatch[1].trim();
+                console.log('[OleMiss Parser] Extracted Date from HTML:', extractedDate);
+
+                // Format the extracted date and put it into EventDate field
+                const formattedDate = formatEventDate(extractedDate);
+                result.EventDate = formattedDate;
+                console.log('[OleMiss Parser] Set formatted date to EventDate:', result.EventDate);
+
+                // Also keep the original date in the Date field for reference
+                result.Date = extractedDate;
+            } else {
+                console.log('[OleMiss Parser] No date found in HTML');
             }
 
             // Extract Time
-            // Using a more compatible regex without the 's' flag
             const timeRegex = /aria-label="Event Time"[^>]*>[\s\S]*?(\d+\s+[ap]\.m\.)<\/span>/;
             const timeMatch = htmlContent.match(timeRegex);
             if (timeMatch && timeMatch[1]) {
                 result.Time = timeMatch[1].trim();
+                console.log('[OleMiss Parser] Extracted Time:', result.Time);
             }
         }
 
-        console.log('[OleMiss Parser] Extracted game details:', result);
+        console.log('[OleMiss Parser] Final extracted game details:', result);
     } catch (error) {
         console.error('[OleMiss Parser] Error extracting game details:', error);
     }
