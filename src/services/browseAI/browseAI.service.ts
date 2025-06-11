@@ -1,8 +1,8 @@
 import { admin, db } from '../../config/firebase';
 import { Firestore } from 'firebase-admin/firestore';
-import { convertToFirestoreFormat } from '../../utils/firestore';
+import { convertToFirestoreFormat } from '../../utils/firestore.utils';
 import { BrowseAIWebhookData } from '../../interfaces';
-import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai';
+import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai.utils';
 import logger from '../../middlewares/logger';
 
 export class BrowseAIService {

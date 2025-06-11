@@ -1,5 +1,5 @@
 import * as admin from 'firebase-admin';
-import logger from '../middlewares/logger';
+import { processOleMissItem } from './olemiss';
 
 /**
  * Appends new data to existing document data
@@ -236,9 +236,11 @@ export function processArrayItem(
     // Define base allowed fields
     let allowedFields = ['Date', 'ImageUrl', 'Location', 'Logo', 'Time', 'Description', 'Title', 'uid'];
 
-    // Add custom allowed fields based on document name
+    // Custom Field
+
+    // OLEMISSPORTS.COM
     if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
-        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports'];
+        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports', 'Score_date'];
     }
 
     // Add all existing fields from the processed item, but only if they're in the allowed list
@@ -254,104 +256,13 @@ export function processArrayItem(
         newLabel['ImageUrl'] = '';
     }
 
-    // Special handling for olemisssports.com EventDate field
-    // Check for EventDate field specifically
-    if (processedItem.EventDate) {
-        processEventDate(newLabel, 'EventDate', processedItem, key, docName, originUrl);
+    // Special handling for olemisssports.com
+    if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
+        // Use the dedicated OleMiss processing function
+        processOleMissItem(processedItem, newLabel, key, docName, originUrl);
     }
 
     return newLabel;
-}
-
-/**
- * Process event date for olemisssports.com
- * @param newLabel Label object to update
- * @param itemKey Current item key
- * @param processedItem Processed item
- * @param key Parent key
- * @param docName Domain identifier
- * @param originUrl Origin URL
- */
-export function processEventDate(
-    newLabel: any,
-    itemKey: string,
-    processedItem: any,
-    key: string,
-    docName: string,
-    originUrl: string,
-): void {
-    const isOleMissSite =
-        docName === 'olemisssports.com' ||
-        originUrl.includes('olemisssports.com') ||
-        key === 'Ole Sport' ||
-        newLabel.Title === 'Ole Sport';
-
-    if (isOleMissSite && itemKey === 'EventDate' && processedItem[itemKey]) {
-        try {
-            const eventDateStr = processedItem[itemKey];
-            const dateInfo = parseEventDate(eventDateStr);
-
-            if (dateInfo) {
-                newLabel['StartDate'] = dateInfo.startDate;
-                newLabel['EndDate'] = dateInfo.endDate;
-
-                logger.info(`[BrowseAI Webhook] Processed date range: ${dateInfo.startDate} to ${dateInfo.endDate}`);
-            }
-        } catch (error) {
-            logger.error(`[BrowseAI Webhook] Error processing date for olemisssports.com:`, error);
-        }
-    }
-}
-
-/**
- * Parse event date string into standardized date format
- * @param eventDateStr Event date string
- * @returns Object containing start and end dates in YYYY-MM-DD format
- */
-export function parseEventDate(eventDateStr: string): { startDate: string; endDate: string } | null {
-    // Parse dates like "Jun 13\n(Fri)\n-\nJun 23\n(Mon)" or "May 28 (Wed) - May 31 (Sat)"
-    const datePattern =
-        /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:\s*\([^\)]*\))?(?:\s*[-\n]+\s*)?((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})?/;
-    const match = eventDateStr.match(datePattern);
-
-    if (!match) return null;
-
-    // Month mapping
-    const monthMap: { [key: string]: string } = {
-        Jan: '01',
-        Feb: '02',
-        Mar: '03',
-        Apr: '04',
-        May: '05',
-        Jun: '06',
-        Jul: '07',
-        Aug: '08',
-        Sep: '09',
-        Oct: '10',
-        Nov: '11',
-        Dec: '12',
-    };
-
-    // Extract start date components
-    const startMonth = match[1];
-    const startDay = match[2].padStart(2, '0');
-    const currentYear = new Date().getFullYear();
-
-    const startDate = `${currentYear}-${monthMap[startMonth]}-${startDay}`;
-    let endDate = startDate; // Default end date is same as start date
-
-    // If there's an end date
-    if (match[3]) {
-        // The end date is in format "Month Day"
-        const endDateParts = match[3].match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/);
-        if (endDateParts) {
-            const endMonth = endDateParts[1];
-            const endDay = endDateParts[2].padStart(2, '0');
-            endDate = `${currentYear}-${monthMap[endMonth]}-${endDay}`;
-        }
-    }
-
-    return { startDate, endDate };
 }
 
 /**
