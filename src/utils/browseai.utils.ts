@@ -1,5 +1,6 @@
 import * as admin from 'firebase-admin';
 import { processOleMissItem } from './olemiss';
+import logger from '../middlewares/logger';
 
 /**
  * Appends new data to existing document data
@@ -33,6 +34,15 @@ export function appendNewData(
     Object.keys(processedData).forEach((key) => {
         const newValue = processedData[key];
 
+        // Log sports data in the incoming data
+        if (Array.isArray(newValue)) {
+            newValue.forEach((item, index) => {
+                if (item && item.Sports) {
+                    console.log(`[Sports Data] In appendNewData - ${key}[${index}] sports data:`, JSON.stringify(item.Sports));
+                }
+            });
+        }
+
         // If the key already exists in the existing data and both are arrays
         if (mergedData.data[key] && Array.isArray(mergedData.data[key]) && Array.isArray(newValue)) {
             // Append the new array items to the existing array
@@ -41,6 +51,16 @@ export function appendNewData(
             console.log(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
+            
+            // Log sports data after merging
+            if (key === 'OleSports' || key === 'Events') {
+                console.log(`[Sports Data] After merge - ${key} array contains ${mergedData.data[key].length} items`);
+                mergedData.data[key].forEach((item: any, index: number) => {
+                    if (item && item.Sports) {
+                        console.log(`[Sports Data] Merged item ${index} sports data:`, JSON.stringify(item.Sports));
+                    }
+                });
+            }
         } else {
             // Otherwise, replace or add the key-value pair
             const isNew = mergedData.data[key] === undefined;
@@ -79,7 +99,7 @@ export function extractDomainIdentifier(url: string): string {
             }
         }
     } catch (error) {
-        console.warn(`Invalid URL: ${url}`);
+        logger.warn(`Invalid URL: ${url}`);
     }
 
     return docName;

@@ -1,34 +1,11 @@
 import express, { Request, Response, Router } from 'express';
 import FirestoreService from '../../services/firestore';
 import logger from '../../middlewares/logger';
+import { findMatchedCategory } from '../../utils/firestore.utils';
+import { db } from '../../config/firebase';
 
 const FIRESTORE_ROUTER: Router = express.Router();
 const firestoreService = new FirestoreService();
-
-/**
- * Helper function to find a category by name (case-insensitive)
- * @param collection Collection name
- * @param documentName Document name
- * @param subcategory Category to find
- * @returns The matched category name with correct case
- */
-async function findMatchedCategory(collection: string, documentName: string, subcategory: string): Promise<string> {
-    const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
-    
-    // Find the actual category name with correct case
-    const subcategoryLower = subcategory.toLowerCase();
-    const foundCategory = result.categories?.find((category) => category.toLowerCase() === subcategoryLower);
-    
-    if (!foundCategory) {
-        throw {
-            status: 404,
-            message: `Category '${subcategory}' not found`,
-            availableCategories: result.categories
-        };
-    }
-    
-    return foundCategory;
-}
 
 /**
  * GET endpoint to fetch document IDs from a specified Firestore collection.
@@ -50,7 +27,7 @@ FIRESTORE_ROUTER.get('/:collection', async (req: Request, res: Response) => {
         }
         res.json(result);
     } catch (error) {
-        logger.error(`Error fetching from Firestore: ${error}`);
+        logger.error(`Error fetching from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`);
         res.status(500).json({ error: 'Failed to fetch document IDs from Firestore' });
     }
 });
@@ -77,9 +54,13 @@ FIRESTORE_ROUTER.get('/:collection/:documentName', async (req: Request, res: Res
             return res.status(404).json({ error: result.error });
         }
 
-        res.json(result);
+        // Format the result with standardized fields
+        const formattedResult = firestoreService.formatResult(result, documentName);
+        res.json(formattedResult);
     } catch (error) {
-        logger.error(`Error fetching document from Firestore: ${error}`);
+        logger.error(
+            `Error fetching document from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
         res.status(500).json({ error: 'Failed to fetch document from Firestore' });
     }
 });
@@ -101,104 +82,160 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/category', async (req: Request,
         const { collection, documentName } = req.params;
 
         try {
-            const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
-            res.json(result);
-        } catch (error) {
-            return res.status(404).json({ error: (error as Error).message });
+            // Get the document from Firestore
+            const docRef = await db.collection(collection).doc(documentName).get();
+
+            if (!docRef.exists) {
+                return res.status(404).json({ error: 'Document not found' });
+            }
+
+            const data = docRef.data();
+            if (!data || !data.data) {
+                return res.status(404).json({ error: 'Document has no data' });
+            }
+
+            // Get the data object which contains the arrays
+            const docData = data.data || {};
+
+            // Find all keys that are arrays
+            const categories = Object.keys(docData).filter((key) => Array.isArray(docData[key]));
+
+            // Return only the array names as a simple array
+            res.json(categories);
+        } catch (error: any) {
+            res.status(404).json({ error: error.message });
         }
     } catch (error) {
-        logger.error(`Error fetching categories from Firestore: ${error}`);
+        logger.error(
+            `Error fetching categories from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
         res.status(500).json({ error: 'Failed to fetch categories from Firestore' });
     }
 });
 
 /**
  * GET endpoint to fetch data from a specific subcategory of a document in a Firestore collection.
- * The subcategory is matched case-insensitively against the document's available categories.
+ * Supports optional query parameters for count limitation and date range filtering.
  *
- * @route GET /:collection/:documentId/category=:subcategory
- * @param {Request} req - Express request object, expects `collection`, `documentId`, and `subcategory` as route parameters.
- * @param {Response} res - Express response object used to return subcategory data or an error message.
+ * @route GET /:collection/:documentName/category=:subcategory
+ * @param {Request} req - Express request object, expects `collection`, `documentName`, and `subcategory` as route parameters.
+ *                         Optional query parameters:
+ *                         - `count`: Limits the number of items returned
+ *                         - `from`: Start date for date range filtering (ISO format YYYY-MM-DD)
+ *                         - `to`: End date for date range filtering (ISO format YYYY-MM-DD, defaults to current date)
+ * @param {Response} res - Express response object used to return filtered data or an error message.
  *
- * @returns {JSON} - Returns subcategory data if a case-insensitive match is found.
+ * @returns {JSON} - Returns subcategory data, optionally filtered by count and/or date range.
  *
- * @throws {404} - If the document, categories, or specified subcategory is not found.
- * @throws {500} - If an internal error occurs during the fetch operation.
+ * @example
+ * // Basic usage - returns all items in the category
+ * GET /captured_lists/olemisssports.com/category=ole
+ *
+ * // Limit to 5 items
+ * GET /captured_lists/olemisssports.com/category=ole?count=5
+ *
+ * // Get all events between June 1st and June 30th, 2025
+ * GET /captured_lists/olemisssports.com/category=ole?from=2025-06-01&to=2025-06-30
+ *
+ * // Get 10 events starting from June 1st, 2025
+ * GET /captured_lists/olemisssports.com/category=ole?from=2025-06-01&count=10
  */
-FIRESTORE_ROUTER.get('/:collection/:documentName/category=:subcategory', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.get('/:collection/:documentName/:subcategory', async (req: Request, res: Response) => {
     try {
         const { collection, documentName, subcategory } = req.params;
-        
+        const { from, to, count } = req.query;
+
+        // Parse count parameter if provided
+        let countNum: number | undefined;
+        if (count !== undefined) {
+            countNum = parseInt(count as string, 10);
+            if (isNaN(countNum) || countNum <= 0) {
+                return res.status(400).json({ error: 'Count parameter must be a positive number' });
+            }
+        }
+
+        // Parse dates if provided
+        let fromDate: Date | undefined;
+        let toDate: Date | undefined;
+
+        if (from) {
+            fromDate = new Date(from as string);
+            if (isNaN(fromDate.getTime())) {
+                return res.status(400).json({ error: 'Invalid from date format. Use ISO format (YYYY-MM-DD)' });
+            }
+
+            // Set toDate if 'to' is provided, otherwise default to current date
+            toDate = to ? new Date(to as string) : new Date();
+            if (isNaN(toDate.getTime())) {
+                return res.status(400).json({ error: 'Invalid to date format. Use ISO format (YYYY-MM-DD)' });
+            }
+        }
+
         try {
             // Find the matching category with correct case
             const matchedCategory = await findMatchedCategory(collection, documentName, subcategory);
-            
-            // Fetch the category data
-            const categoryResult = await firestoreService.fetchCategoryData(collection, documentName, matchedCategory);
-            res.json({ data: categoryResult, count: categoryResult.length });
+
+            // Process the subcategory data using the service
+            const processedData = await firestoreService.processSubcategoryData(
+                collection,
+                documentName,
+                matchedCategory,
+                fromDate,
+                toDate,
+                countNum,
+            );
+
+            res.json(processedData);
         } catch (error: any) {
             if (error.status === 404) {
                 return res.status(404).json({
                     error: error.message,
-                    availableCategories: error.availableCategories
+                    availableCategories: error.availableCategories,
                 });
             }
             return res.status(404).json({ error: (error as Error).message });
         }
     } catch (error) {
-        logger.error(`Error fetching subcategory data from Firestore: ${error}`);
-        res.status(500).json({ error: 'Failed to fetch subcategory data from Firestore' });
+        logger.error(`Error fetching date range data from Firestore: ${error}`);
+        res.status(500).json({ error: 'Failed to fetch date range data from Firestore' });
     }
 });
 
 /**
- * GET endpoint to fetch a limited number of items from a specific subcategory of a document in a Firestore collection.
- * The subcategory is matched case-insensitively against the document's available categories.
+ * PUT endpoint to update the ImageUrl array of an item based on its uid
  *
- * @route GET /:collection/:documentId/:subcategory/count=:count
- * @param {Request} req - Express request object, expects `collection`, `documentId`, `subcategory`, and `count` as route parameters.
- * @param {Response} res - Express response object used to return limited subcategory data or an error message.
+ * @route PUT /update-image
+ * @param {Request} req - Express request object. Expects `uid` and `ImageUrl` in the request body.
+ * @param {Response} res - Express response object used to return update status or an error message.
  *
- * @returns {JSON} - Returns limited subcategory data if a case-insensitive match is found.
+ * @returns {JSON} - Returns a result object indicating successful update or error details.
  *
- * @throws {400} - If count parameter is invalid
- * @throws {404} - If the document, categories, or specified subcategory is not found.
- * @throws {500} - If an internal error occurs during the fetch operation.
+ * @throws {400} - If required parameters are missing or invalid.
+ * @throws {404} - If the item with specified uid is not found in any collection.
+ * @throws {500} - If an internal server error occurs during the update process.
  */
-FIRESTORE_ROUTER.get('/:collection/:documentName/:subcategory/count=:count', async (req: Request, res: Response) => {
+FIRESTORE_ROUTER.put('/:collection/:documentName/:subcategory/update-image', async (req: Request, res: Response) => {
     try {
-        const { collection, documentName, subcategory, count } = req.params;
-        const countNum = parseInt(count, 10);
+        const { uid, ImageUrl } = req.body;
 
-        if (isNaN(countNum) || countNum <= 0) {
-            return res.status(400).json({ error: 'Count parameter must be a positive number' });
+        // Validate required parameters
+        if (!uid || !ImageUrl) {
+            return res.status(400).json({ error: 'Missing required parameters: uid and ImageUrl are required' });
         }
 
-        try {
-            // Find the matching category with correct case
-            const matchedCategory = await findMatchedCategory(collection, documentName, subcategory);
-            
-            // Fetch the category data and limit the results
-            const categoryResult = await firestoreService.fetchCategoryData(collection, documentName, matchedCategory);
-            const limitedResults = categoryResult.slice(0, countNum);
-            
-            res.json({
-                data: limitedResults,
-                count: limitedResults.length,
-                totalAvailable: categoryResult.length,
-            });
-        } catch (error: any) {
-            if (error.status === 404) {
-                return res.status(404).json({
-                    error: error.message,
-                    availableCategories: error.availableCategories
-                });
-            }
-            return res.status(404).json({ error: (error as Error).message });
+        // Update the image URL
+        const result = await firestoreService.updateImageByUid(uid, ImageUrl);
+
+        if ('error' in result) {
+            return res.status(404).json({ error: result.error });
         }
+
+        res.json(result);
     } catch (error) {
-        logger.error(`Error fetching limited subcategory data from Firestore: ${error}`);
-        res.status(500).json({ error: 'Failed to fetch limited subcategory data from Firestore' });
+        logger.error(
+            `Error updating image URL in Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
+        res.status(500).json({ error: 'Failed to update image URL in Firestore' });
     }
 });
 
@@ -226,9 +263,55 @@ FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: 
 
         res.json(result);
     } catch (error) {
-        logger.error(`Error deleting document from Firestore: ${error}`);
+        logger.error(
+            `Error deleting document from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`,
+        );
         res.status(500).json({ error: 'Failed to delete document from Firestore' });
     }
 });
+
+/**
+ * POST endpoint to remove duplicate items from a specific subcategory in a document
+ * Duplicates are identified based on having the same Title, Location, Date, and EventDate
+ *
+ * @route POST /:collection/:documentName/category=:subcategory/remove-duplicates
+ * @param {Request} req - Express request object. Expects collection, documentName, and subcategory as route parameters.
+ * @param {Response} res - Express response object used to return removal status or an error message.
+ *
+ * @returns {JSON} - Returns a result object indicating successful removal with count of removed duplicates.
+ *
+ * @throws {400} - If required parameters are missing or invalid.
+ * @throws {404} - If the document or subcategory is not found.
+ * @throws {500} - If an internal server error occurs during the removal process.
+ */
+FIRESTORE_ROUTER.post(
+    '/:collection/:documentName/category=:subcategory/remove-duplicates',
+    async (req: Request, res: Response) => {
+        try {
+            const { collection, documentName, subcategory } = req.params;
+
+            // Validate required parameters
+            if (!collection || !documentName || !subcategory) {
+                return res.status(400).json({
+                    error: 'Missing required parameters: collection, documentName, and subcategory are required',
+                });
+            }
+
+            // Call the service to remove duplicates
+            const result = await firestoreService.removeDuplicates(collection, documentName, subcategory);
+
+            if ('error' in result) {
+                return res.status(404).json({ error: result.error });
+            }
+
+            res.json(result);
+        } catch (error) {
+            logger.error(
+                `Error removing duplicates from Firestore: ${error instanceof Error ? error.message : 'Unknown error'}`,
+            );
+            res.status(500).json({ error: 'Failed to remove duplicates from Firestore' });
+        }
+    },
+);
 
 export default FIRESTORE_ROUTER;

@@ -3,6 +3,7 @@ import { Firestore } from 'firebase-admin/firestore';
 import { convertToFirestoreFormat } from '../../utils/firestore.utils';
 import { BrowseAIWebhookData } from '../../interfaces';
 import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai.utils';
+import { processSportsItem, processOleMissItem } from '../../utils/olemiss';
 import logger from '../../middlewares/logger';
 
 export class BrowseAIService {
@@ -22,7 +23,7 @@ export class BrowseAIService {
 
     public async processWebhookData(webhookData: BrowseAIWebhookData): Promise<Object> {
         console.log('[BrowseAI] Starting to process incoming request...');
-        
+
         // Validate webhook data structure
         if (!webhookData || !webhookData.task) {
             const error = new Error('Invalid webhook data: Missing task information');
@@ -30,13 +31,13 @@ export class BrowseAIService {
             throw {
                 status: 400,
                 message: 'Invalid webhook data structure',
-                details: 'The webhook payload is missing required task information'
+                details: 'The webhook payload is missing required task information',
             };
         }
-        
+
         try {
             console.log('[BrowseAI] Webhook data:', webhookData.task.capturedLists);
-            
+
             this.task = webhookData.task;
             const inputParams = this.task.inputParameters || {};
             const [firstKey, firstValue] = Object.entries(inputParams)[0] || [];
@@ -81,7 +82,7 @@ export class BrowseAIService {
             if (error && typeof error === 'object' && 'status' in error) {
                 throw error;
             }
-            
+
             // Log and rethrow as a more detailed error
             logger.error('[BrowseAI] Error processing webhook data:', error);
             throw error;
@@ -133,7 +134,7 @@ export class BrowseAIService {
         // Log array fields for better visibility
         Object.entries(processedData).forEach(([key, value]) => {
             if (Array.isArray(value)) {
-                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
+                console.log(`[DB Field] '${key}' contains ${value.length} items`);
             }
         });
     }
@@ -152,7 +153,7 @@ export class BrowseAIService {
         originUrl: string,
         screenshots: any,
     ): Promise<void> {
-        logger.info('[Screenshots] Processing captured screenshots...');
+        console.log('[Screenshots] Processing captured screenshots...');
         const screenshotsRef = this.db.collection('captured_screenshots').doc(docName);
         const screenshotsData = convertToFirestoreFormat(screenshots);
         const timestamp = admin.firestore.Timestamp.fromDate(new Date());
@@ -164,11 +165,11 @@ export class BrowseAIService {
         const processedData = cleanDataFields(screenshotsData, existingData, originUrl, docName);
 
         if (docSnapshot.exists) {
-            logger.info(`[Screenshots] Updating existing document '${docName}'`);
+            console.log(`[Screenshots] Updating existing document '${docName}'`);
             const appendData = appendNewData(docSnapshot, processedData, originUrl);
             batch.set(screenshotsRef, appendData);
         } else {
-            logger.info(`[Screenshots] Creating new document '${docName}'`);
+            console.log(`[Screenshots] Creating new document '${docName}'`);
             batch.set(screenshotsRef, {
                 data: processedData,
                 timestamp,
@@ -190,40 +191,88 @@ export class BrowseAIService {
         originUrl: string,
         lists: any,
     ): Promise<void> {
-        logger.info('[Lists] Processing captured lists...');
+        const listsRef = db.collection('captured_lists').doc(docName);
 
-        const listsRef = this.db.collection('captured_lists').doc(docName);
-        const listsData = convertToFirestoreFormat(lists);
+        // Check if this is OleMiss data
+        const isOleMissData =
+            docName === 'olemiss' || docName === 'olemisssports.com' || originUrl.includes('olemisssports.com');
 
-        const docSnapshot = await listsRef.get();
-        const existingData = docSnapshot.exists ? docSnapshot.data() : null;
+        if (isOleMissData) {
+            // OleMiss-specific processing path
+            console.log(`[BrowseAI] Processing OleMiss data for ${docName} from ${originUrl}`);
 
-        const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
+            const processedData: Record<string, any> = {};
 
-        if (docSnapshot.exists) {
-            logger.info(
-                `[DB UPDATE] Updating document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
-            );
-            const appendData = appendNewData(docSnapshot, processedData, originUrl);
-            batch.set(listsRef, appendData);
-        } else {
-            logger.info(
-                `[DB INSERT] Creating new document '${docName}' in collection 'captured_lists' with ${Object.keys(processedData).length} fields`,
-            );
-            const prepData = {
-                data: {
-                    ...processedData,
-                },
-            };
-            batch.set(listsRef, prepData);
-        }
+            // Process each list in the captured lists
+            for (const [listName, listData] of Object.entries(lists)) {
+                // Skip empty lists
+                if (!listData || !Array.isArray(listData) || listData.length === 0) {
+                    continue;
+                }
 
-        // Log array fields for better visibility
-        Object.entries(processedData).forEach(([key, value]) => {
-            if (Array.isArray(value)) {
-                logger.info(`[DB Field] '${key}' contains ${value.length} items`);
+                // Process sports items
+                if (listData && Array.isArray(listData)) {
+                    listData.forEach((item, index) => {
+                        if (item && item.Sports) {
+                            // Make sure uid is preserved or generated if missing
+                            if (!item.uid) {
+                                item.uid = `${listName.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`;
+                            }
+
+                            // Apply OleMiss-specific sports processing
+                            processSportsItem(item);
+
+                            if (item.DetailSrc) {
+                                // Create a temporary label object for processing
+                                const tempLabel = { ...item };
+                                processOleMissItem(item, tempLabel, listName, docName, originUrl);
+
+                                // Copy any enhanced fields back to the original item
+                                Object.assign(item, tempLabel);
+                            }
+                        }
+                    });
+                }
+
+                // Process the data for this list
+                console.log(`[BrowseAI] Applying OleMiss-specific processing for list: ${listName}`);
+                processedData[listName] = cleanDataFields(listData, null, originUrl, docName);
             }
-        });
+
+            // Store processed OleMiss data
+            const docSnapshot = await listsRef.get();
+
+            if (docSnapshot.exists) {
+                const appendData = appendNewData(docSnapshot, processedData, originUrl);
+                batch.set(listsRef, appendData);
+            } else {
+                const prepData = {
+                    data: {
+                        ...processedData,
+                    },
+                };
+                batch.set(listsRef, prepData);
+            }
+        } else {
+            // Standard processing path for non-OleMiss data
+            const docSnapshot = await listsRef.get();
+            const existingData = docSnapshot.exists ? docSnapshot.data() : null;
+
+            const listsData = lists;
+            const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
+
+            if (docSnapshot.exists) {
+                const appendData = appendNewData(docSnapshot, processedData, originUrl);
+                batch.set(listsRef, appendData);
+            } else {
+                const prepData = {
+                    data: {
+                        ...processedData,
+                    },
+                };
+                batch.set(listsRef, prepData);
+            }
+        }
     }
 
     public static async fetchFromCollection(collection: string): Promise<string[]> {
@@ -234,7 +283,7 @@ export class BrowseAIService {
             const documentIds = snapshot.docs.map((doc) => doc.id);
             return documentIds;
         } catch (error) {
-            console.error(`Error fetching from collection ${collection}:`, error);
+            logger.error(`Error fetching from collection ${collection}:`, error);
             throw error;
         }
     }
@@ -262,7 +311,7 @@ export class BrowseAIService {
                 data: docSnapshot.data(),
             };
         } catch (error) {
-            console.error(`Error fetching document ${documentId} from collection ${collection}:`, error);
+            logger.error(`Error fetching document ${documentId} from collection ${collection}:`, error);
             throw error;
         }
     }
@@ -299,7 +348,7 @@ export class BrowseAIService {
                 deletedAt,
             };
         } catch (error) {
-            console.error(`Error deleting document ${documentId} from collection ${collection}:`, error);
+            logger.error(`Error deleting document ${documentId} from collection ${collection}:`, error);
             throw error;
         }
     }

@@ -41,9 +41,20 @@ app.use(express.urlencoded({ extended: true }));
  * @param {NextFunction} next - Express next middleware function
  */
 app.use('/', (req: Request, res: Response, next: NextFunction) => {
-    console.log(`[INCOMING REQUEST] ${req.method} ${req.url}`);
+    // Only log non-successful responses or important endpoints
+    const isImportantEndpoint = req.url.includes('/api/webhook') || req.url.includes('/api/firestore');
+
+    // Skip logging for successful GET requests to non-important endpoints
+    if (req.method !== 'GET' || isImportantEndpoint) {
+        logger.debug(`[REQUEST] ${req.method} ${req.url}`);
+    }
+
     res.on('finish', () => {
-        console.log(`[REQUEST SUCCESSFUL] ${req.method} ${req.url} with status ${res.statusCode}`);
+        // Only log errors or important endpoints with status codes
+        if (res.statusCode >= 400 || isImportantEndpoint) {
+            const logLevel = res.statusCode >= 400 ? 'error' : 'info';
+            logger[logLevel](`[RESPONSE] ${req.method} ${req.url} with status ${res.statusCode}`);
+        }
     });
     next();
 });
@@ -78,10 +89,10 @@ app.use(errorHandler);
  * Global error handlers for unhandled exceptions and rejections
  */
 process.on('unhandledRejection', (reason: Error, promise: Promise<any>) => {
-    console.error(`[ERROR - Unhandled Rejection]: ${reason}`);
+    logger.error(`[ERROR - Unhandled Rejection]: ${reason}`);
 });
 process.on('uncaughtException', (error: Error) => {
-    console.error(`[ERROR - Uncaught Exception]: ${error.message}`);
+    logger.error(`[ERROR - Uncaught Exception]: ${error.message}`);
 });
 
 app.listen(port, () => {

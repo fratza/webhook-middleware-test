@@ -21,18 +21,18 @@ const browseAIService = new BrowseAIService();
  */
 WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
     const webhookId = req.params.webhookId;
-    console.log('[Webhook] Incoming request at URL:', webhookId);
 
     // BrowseAI Webhook
     if (webhookId.toLowerCase() === 'browseai') {
         try {
-            console.log('[BrowseAI Webhook] Received request');
+            // Only log once with combined information
+            console.log(`[Webhook:${webhookId}] Processing request`);
 
             const result = await browseAIService.processWebhookData(req.body);
 
             res.json(result);
         } catch (error: any) {
-            console.error('[BrowseAI Webhook] Error:', error);
+            logger.error('[BrowseAI Webhook] Error:', error);
 
             // Check if it's a structured error with status code
             if (error && typeof error === 'object' && 'status' in error) {

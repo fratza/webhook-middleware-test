@@ -9,7 +9,8 @@ if (!fs.existsSync(logDir)) {
 }
 
 const logger = winston.createLogger({
-  level: 'info',
+  // Set default level to warn to reduce verbosity
+  level: process.env.NODE_ENV === 'production' ? 'info' : 'warn',
   format: winston.format.combine(
     winston.format.timestamp(),
     winston.format.json()
