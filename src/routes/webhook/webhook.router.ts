@@ -77,13 +77,20 @@ WEBHOOK_ROUTER.post('/:webhookId', async (req: Request, res: Response) => {
                 });
             }
             
-            // Parse the XML data
-            const parsedData = xmlParserService.parseSportsXML(xmlData);
+            // Parse the XML data - now returns an array of items
+            const parsedItems = xmlParserService.parseSportsXML(xmlData);
             
-            // Return the parsed data
+            // Log the number of items found
+            console.log(`[XML Parser] Found ${parsedItems.length} items in the XML data`);
+            
+            // Return the parsed data with metadata
             res.json({
                 success: true,
-                data: parsedData,
+                meta: {
+                    processedAt: new Date().toISOString(),
+                    itemCount: parsedItems.length
+                },
+                data: parsedItems,
             });
         } catch (error: any) {
             logger.error('[XML Parser Webhook] Error:', error);
