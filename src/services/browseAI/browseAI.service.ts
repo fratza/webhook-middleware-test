@@ -2,7 +2,13 @@ import { admin, db } from '../../config/firebase';
 import { Firestore } from 'firebase-admin/firestore';
 import { convertToFirestoreFormat } from '../../utils/firestore.utils';
 import { BrowseAIWebhookData } from '../../interfaces';
-import { appendNewData, extractDomainIdentifier, cleanDataFields } from '../../utils/browseai.utils';
+import {
+    appendNewData,
+    extractDomainIdentifier,
+    cleanDataFields,
+    deduplicateItems,
+    deduplicateAgainstExisting,
+} from '../../utils/browseai.utils';
 import { processSportsItem, processOleMissItem } from '../../utils/olemiss';
 import logger from '../../middlewares/logger';
 
@@ -243,9 +249,39 @@ export class BrowseAIService {
             const docSnapshot = await listsRef.get();
 
             if (docSnapshot.exists) {
+                // Get existing data for deduplication
+                const existingData = docSnapshot.data()?.data || {};
+
+                // Deduplicate each list against existing data
+                for (const [listName, listItems] of Object.entries(processedData)) {
+                    if (Array.isArray(listItems) && existingData[listName] && Array.isArray(existingData[listName])) {
+                        console.log(
+                            `[BrowseAI] Deduplicating ${listItems.length} items against ${existingData[listName].length} existing items in ${listName}`,
+                        );
+                        // First deduplicate within the new items
+                        const deduplicatedItems = deduplicateItems(listItems);
+                        // Then deduplicate against existing items
+                        processedData[listName] = deduplicateAgainstExisting(deduplicatedItems, existingData[listName]);
+                        console.log(
+                            `[BrowseAI] After deduplication: ${processedData[listName].length} unique items remain in ${listName}`,
+                        );
+                    }
+                }
+
                 const appendData = appendNewData(docSnapshot, processedData, originUrl);
                 batch.set(listsRef, appendData);
             } else {
+                // For new documents, just deduplicate within the new items
+                for (const [listName, listItems] of Object.entries(processedData)) {
+                    if (Array.isArray(listItems)) {
+                        console.log(`[BrowseAI] Deduplicating ${listItems.length} new items in ${listName}`);
+                        processedData[listName] = deduplicateItems(listItems);
+                        console.log(
+                            `[BrowseAI] After deduplication: ${processedData[listName].length} unique items remain in ${listName}`,
+                        );
+                    }
+                }
+
                 const prepData = {
                     data: {
                         ...processedData,
@@ -262,9 +298,39 @@ export class BrowseAIService {
             const processedData = cleanDataFields(listsData, existingData, originUrl, docName);
 
             if (docSnapshot.exists) {
+                // Get existing data for deduplication
+                const docData = docSnapshot.data()?.data || {};
+
+                // Deduplicate each category in processedData against existing data
+                for (const [category, items] of Object.entries(processedData)) {
+                    if (Array.isArray(items) && docData[category] && Array.isArray(docData[category])) {
+                        console.log(
+                            `[BrowseAI] Deduplicating ${items.length} items against ${docData[category].length} existing items in ${category}`,
+                        );
+                        // First deduplicate within the new items
+                        const deduplicatedItems = deduplicateItems(items);
+                        // Then deduplicate against existing items
+                        processedData[category] = deduplicateAgainstExisting(deduplicatedItems, docData[category]);
+                        console.log(
+                            `[BrowseAI] After deduplication: ${processedData[category].length} unique items remain in ${category}`,
+                        );
+                    }
+                }
+
                 const appendData = appendNewData(docSnapshot, processedData, originUrl);
                 batch.set(listsRef, appendData);
             } else {
+                // For new documents, just deduplicate within the new items
+                for (const [category, items] of Object.entries(processedData)) {
+                    if (Array.isArray(items)) {
+                        console.log(`[BrowseAI] Deduplicating ${items.length} new items in ${category}`);
+                        processedData[category] = deduplicateItems(items);
+                        console.log(
+                            `[BrowseAI] After deduplication: ${processedData[category].length} unique items remain in ${category}`,
+                        );
+                    }
+                }
+
                 const prepData = {
                     data: {
                         ...processedData,

@@ -216,6 +216,7 @@ FIRESTORE_ROUTER.get('/:collection/:documentName/:subcategory', async (req: Requ
  */
 FIRESTORE_ROUTER.put('/:collection/:documentName/:subcategory/update-image', async (req: Request, res: Response) => {
     try {
+        const { collection, documentName, subcategory } = req.params;
         const { uid, ImageUrl } = req.body;
 
         // Validate required parameters
@@ -223,7 +224,53 @@ FIRESTORE_ROUTER.put('/:collection/:documentName/:subcategory/update-image', asy
             return res.status(400).json({ error: 'Missing required parameters: uid and ImageUrl are required' });
         }
 
-        // Update the image URL
+        // First, check if we can find the item in the specified location
+        const docRef = await db.collection(collection).doc(documentName).get();
+        if (!docRef.exists) {
+            return res.status(404).json({ error: `Document ${documentName} not found in collection ${collection}` });
+        }
+
+        const data = docRef.data();
+        if (!data || !data.data || !data.data[subcategory]) {
+            return res.status(404).json({ error: `Subcategory ${subcategory} not found in document ${documentName}` });
+        }
+
+        // Check if the item with the specified uid exists in this subcategory
+        const items = data.data[subcategory];
+        if (!Array.isArray(items)) {
+            return res.status(404).json({ error: `Subcategory ${subcategory} does not contain an array of items` });
+        }
+
+        const itemIndex = items.findIndex((item: any) => item.uid === uid);
+        if (itemIndex !== -1) {
+            // First, get the current item to preserve all its data
+            const currentItem = items[itemIndex];
+
+            // Create a new item that's an exact copy of the current one, but with updated ImageUrl
+            const updatedItem = {
+                ...currentItem,
+                ImageUrl: Array.isArray(ImageUrl) ? ImageUrl : [ImageUrl],
+            };
+
+            // Create a new array with all items, replacing only the one we want to update
+            const updatedItems = [...items];
+            updatedItems[itemIndex] = updatedItem;
+
+            // Update only the specific subcategory array, preserving all other data
+            await db
+                .collection(collection)
+                .doc(documentName)
+                .update({
+                    [`data.${subcategory}`]: updatedItems,
+                });
+
+            return res.json({
+                success: true,
+                message: `ImageUrl updated successfully for item with uid '${uid}'`,
+            });
+        }
+
+        // If not found in the specified location, fall back to the general search
         const result = await firestoreService.updateImageByUid(uid, ImageUrl);
 
         if ('error' in result) {
@@ -285,7 +332,7 @@ FIRESTORE_ROUTER.delete('/:collection/:documentName', async (req: Request, res: 
  * @throws {500} - If an internal server error occurs during the removal process.
  */
 FIRESTORE_ROUTER.post(
-    '/:collection/:documentName/category=:subcategory/remove-duplicates',
+    '/:collection/:documentName/:subcategory/remove-duplicates',
     async (req: Request, res: Response) => {
         try {
             const { collection, documentName, subcategory } = req.params;
