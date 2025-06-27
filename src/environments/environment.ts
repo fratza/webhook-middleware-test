@@ -1,9 +1,7 @@
 import * as dotenv from 'dotenv';
 dotenv.config();
 
-// Base environment configuration that can be extended by specific environment files
 export const ENV = {
-    // Add any environment-specific configuration here
     port: process.env.PORT || 3000,
     nodeEnv: process.env.NODE_ENV || 'production',
     webhook: process.env.WEBHOOK || '',

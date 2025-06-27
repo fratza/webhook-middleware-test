@@ -2,6 +2,12 @@ import { admin } from '../config/firebase';
 import logger from '../middlewares/logger';
 import FirestoreService from '../services/firestore';
 
+interface DateFilterableItem {
+    Date?: string;
+    EventDate?: string;
+    [key: string]: any;
+}
+
 /**
  * Helper function to convert data to Firestore format
  *
@@ -39,10 +45,17 @@ export function convertToFirestoreFormat(data: any): any {
  * @param collection Collection name
  * @param documentName Document name
  * @param subcategory Category to find
+ * @param firestoreInstance Optional Firestore instance to use
  * @returns The matched category name with correct case
  */
-export async function findMatchedCategory(collection: string, documentName: string, subcategory: string): Promise<string> {
-    const firestoreService = new FirestoreService();
+export async function findMatchedCategory(
+    collection: string,
+    documentName: string,
+    subcategory: string,
+    firestoreInstance?: any,
+): Promise<string> {
+    // Create a new FirestoreService or use the provided instance's service
+    const firestoreService = firestoreInstance ? new FirestoreService() : new FirestoreService();
     const result = await firestoreService.fetchCategoriesFromDocument(collection, documentName);
 
     // Find the actual category name with correct case
@@ -58,4 +71,47 @@ export async function findMatchedCategory(collection: string, documentName: stri
     }
 
     return foundCategory;
+}
+
+/**
+ * Filter items by date range or from a specific date onward
+ * @param items Array of items to filter
+ * @param fromDate Optional start date for filtering
+ * @param toDate Optional end date for filtering
+ * @returns Filtered array of items
+ */
+export function filterItemsByDate<T extends DateFilterableItem>(items: T[], fromDate?: Date, toDate?: Date): T[] {
+    if (!fromDate) return items;
+
+    // Case 1: Both fromDate and toDate are provided
+    if (fromDate && toDate) {
+        return items.filter((item) => {
+            // Use the Date field from the database (YYYY-MM-DD format)
+            if (item.Date) {
+                const itemDate = new Date(item.Date);
+                if (!isNaN(itemDate.getTime())) {
+                    // Check if the date is within the range
+                    return itemDate >= fromDate && itemDate <= toDate;
+                }
+            }
+
+            // If Date is not valid or doesn't exist, exclude this item
+            return false;
+        });
+    }
+
+    // Case 2: Only fromDate is provided (filter from that date onward)
+    return items.filter((item) => {
+        // Use the Date field from the database (YYYY-MM-DD format)
+        if (item.Date) {
+            const itemDate = new Date(item.Date);
+            if (!isNaN(itemDate.getTime())) {
+                // Check if the date is after fromDate
+                return itemDate >= fromDate;
+            }
+        }
+
+        // If Date is not valid or doesn't exist, exclude this item
+        return false;
+    });
 }

@@ -231,7 +231,7 @@ export class BrowseAIService {
                             if (item.DetailSrc) {
                                 // Create a temporary label object for processing
                                 const tempLabel = { ...item };
-                                processOleMissItem(item, tempLabel, listName, docName, originUrl);
+                                processOleMissItem(item, tempLabel, docName, originUrl);
 
                                 // Copy any enhanced fields back to the original item
                                 Object.assign(item, tempLabel);

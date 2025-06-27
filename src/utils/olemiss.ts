@@ -44,19 +44,19 @@ const MONTH_MAP: Record<string, string> = {
  * Regular expressions used for extracting data from OleMiss HTML content
  */
 const REGEX = {
-    // Regular game scores
     SCORE: /data-test-id="s-game-card-standard__header-game-team-score">([^<]+)<\/span>/,
-    // Golf scores in title attribute
     GOLF_SCORE: /title="([^"]+)"[^>]*class="s-game-card__postscore-info"[^>]*>([^<]+)<\/span>/,
-    // Alternative golf score pattern
     GOLF_SCORE_ALT: /class="s-game-card__postscore-info"[^>]*>([^<]+)<\/span>/,
-    // Date patterns
     DATE_RANGE:
         /data-test-id="s-game-card-standard__header-game-date"[^>]*>([^<]*?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^-]*?-[^<]*?(?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)[^<]*?)<\/p>/,
     HEADER_DATE: /data-test-id="s-game-card-standard__header-game-date"[^>]*>([\s\S]*?)<\/p>/,
     DATE_DETAILS: /data-test-id="s-game-card-standard__header-game-date-details"[^>]*><span[^>]*>([^<]+)<\/span>/,
     DAY_OF_WEEK: /<span[^>]*class="s-text-paragraph text-theme-muted ml-1"[^>]*>\(([^\)]+)\)<\/span>/,
-    TIME: /aria-label="Event Time"[^>]*>[\s\S]*?(?:(\d+\s+(?:[ap]\.m\.|[AP]M))|All Day)<\/span>/,
+    TIME: /aria-label="Event Time"[^>]*>[\s\S]*?<\/svg>\s*([^<]+)<\/span>/,
+    DATE_RANGE_WITH_DOW:
+        /((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})\s*<span[^>]*>\(([^)]+)\)<\/span><span[^>]*>-<\/span>\s*((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})\s*<span[^>]*>\(([^)]+)\)<\/span>/,
+    SIMPLE_DATE_WITH_DOW:
+        /data-test-id="s-game-card-standard__header-game-date"[^>]*>((?:Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+\d{1,2})\s*<span[^>]*>\(([^)]+)\)<\/span>/,
 };
 
 /**
@@ -66,8 +66,8 @@ const REGEX = {
  */
 function cleanHtml(html: string): string {
     return html
-        .replace(/<[^>]*>/g, ' ') // Remove HTML tags
-        .replace(/\s+/g, ' ') // Normalize spaces
+        .replace(/<[^>]*>/g, ' ')
+        .replace(/\s+/g, ' ')
         .trim();
 }
 
@@ -106,7 +106,15 @@ export function extractGameDetails(htmlContent: string, sportType?: string): Gam
         if (dateRangeMatch) result.Date = cleanHtml(dateRangeMatch[1]);
         if (dateDetailsMatch) result.Date = dateDetailsMatch[1].trim();
         if (dayOfWeekMatch) result.DayOfWeek = dayOfWeekMatch[1].trim();
-        if (timeMatch) result.Time = timeMatch[1] ? timeMatch[1].trim() : 'All Day';
+
+        // Handle time extraction, including TBA
+        if (timeMatch) {
+            if (htmlContent.includes('TBA')) {
+                result.Time = 'TBA';
+            } else {
+                result.Time = timeMatch[1] ? timeMatch[1].trim() : 'All Day';
+            }
+        }
 
         // Format EventDate with the extracted data
         if (result.Date) {
@@ -135,7 +143,6 @@ export function extractGameDetails(htmlContent: string, sportType?: string): Gam
  * @param newLabel Label object to update
  * @param itemKey Current item key
  * @param processedItem Processed item
- * @param key Parent key
  * @param docName Domain identifier
  * @param originUrl Origin URL
  */
@@ -143,7 +150,6 @@ export function processEventDate(
     newLabel: any,
     itemKey: string,
     processedItem: any,
-    key: string,
     docName: string,
     originUrl: string,
 ): void {
@@ -193,7 +199,6 @@ export function parseEventDate(eventDateStr: string): { startDate: string; endDa
         };
     }
 
-    // Try to match "Jan 1-3, 2023" or "Jan 1, 2023"
     const yearMatch = cleanedStr.match(
         /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})(?:-(\d{1,2}))?,\s*(\d{4})/i,
     );
@@ -207,6 +212,14 @@ export function parseEventDate(eventDateStr: string): { startDate: string; endDa
             };
         }
         return { startDate, endDate: startDate };
+    }
+
+    const htmlFormatMatch = cleanedStr.match(
+        /(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})\s*(?:<span[^>]*>\s*\([^)]*\)\s*<\/span>|\([^)]*\))?/i,
+    );
+    if (htmlFormatMatch) {
+        const date = formatDate(htmlFormatMatch[1], htmlFormatMatch[2]);
+        return { startDate: date, endDate: date };
     }
 
     // Try to match simple date: "Jan 1" (no year specified, use current year)
@@ -233,18 +246,11 @@ export function processOleMissHtml(htmlContent: string, sportType?: string): Gam
  * Process OleMiss-specific data in an item
  * @param processedItem The processed item
  * @param newLabel The label object to update
- * @param key Parent key
  * @param docName Domain identifier
  * @param originUrl Origin URL
  * @returns Updated newLabel with OleMiss-specific processing
  */
-export function processOleMissItem(
-    processedItem: any,
-    newLabel: any,
-    key: string,
-    docName: string,
-    originUrl: string,
-): any {
+export function processOleMissItem(processedItem: any, newLabel: any, docName: string, originUrl: string): any {
     // Skip processing if DetailSrc is missing or invalid
     if (
         !processedItem?.DetailSrc ||
@@ -255,7 +261,6 @@ export function processOleMissItem(
     }
 
     try {
-        // Get sport type for context
         const sportType = processedItem.Sport || '';
 
         // Extract all available data with sport type context
@@ -267,15 +272,8 @@ export function processOleMissItem(
         if (gameDetails.Time) newLabel.Time = gameDetails.Time;
 
         // Process date information - prioritize header date if available
-        const dateSource = headerGameDate || gameDetails.Date;
-        if (dateSource) {
-            updateDateFields(dateSource, newLabel);
-        }
-
-        // Set EventDate if available from gameDetails
-        if (gameDetails.EventDate) {
-            newLabel.EventDate = gameDetails.EventDate;
-        }
+        const dateSource = headerGameDate.rawDate || gameDetails.Date || null;
+        processDateInformation(dateSource, gameDetails, newLabel);
 
         // Transform Logo URL if present to use 200x200 dimensions
         if (newLabel.Logo) {
@@ -289,22 +287,139 @@ export function processOleMissItem(
 }
 
 /**
+ * Process date information for OleMiss items
+ * @param dateSource The source date string
+ * @param gameDetails Game details object with additional information
+ * @param label The label object to update
+ */
+function processDateInformation(dateSource: string | null, gameDetails: GameDetails, label: any): void {
+    if (!dateSource) {
+        return;
+    }
+
+    if (dateSource.includes(' - ') && (dateSource.includes('(') || dateSource.includes(')'))) {
+        label.EventDate = dateSource;
+
+        const parsedDate = parseEventDate(dateSource);
+        if (parsedDate) {
+            label.Date = parsedDate.startDate;
+
+            // Set end date if different from start date
+            if (parsedDate.endDate !== parsedDate.startDate) {
+                label.EventEndDate = parsedDate.endDate;
+            }
+        }
+    } else {
+        // Standard date processing for non-range formats
+        updateDateFields(dateSource, label);
+    }
+
+    // Set EventDate from gameDetails if not already set
+    if (gameDetails.EventDate && !label.EventDate) {
+        label.EventDate = gameDetails.EventDate;
+    }
+
+    // Add time information to EventDate if available and not already included
+    if (label.EventDate && gameDetails.Time && !label.EventDate.includes(gameDetails.Time)) {
+        label.EventDate = `${label.EventDate} / ${gameDetails.Time}`;
+    }
+}
+
+/**
  * Extract date from header-game-date element if present
  * @param detailSrc The DetailSrc HTML content
  * @returns Cleaned date string or null if not found
  */
-function extractHeaderGameDate(detailSrc: string): string | null {
-    if (!detailSrc) return null;
+function extractHeaderGameDate(detailSrc: string): { formattedDate: string | null; rawDate: string | null } {
+    if (!detailSrc) return { formattedDate: null, rawDate: null };
 
     try {
+        // First try to match the new date range format with day of week in spans
+        const rangeWithDowMatch = detailSrc.match(REGEX.DATE_RANGE_WITH_DOW);
+        if (rangeWithDowMatch) {
+            // Format: "Jun 19 (Thu) - Jun 20 (Fri)"
+            const startMonth = rangeWithDowMatch[1].split(' ')[0];
+            const startDay = rangeWithDowMatch[1].split(' ')[1];
+            const startDow = rangeWithDowMatch[2];
+            const endMonth = rangeWithDowMatch[3].split(' ')[0];
+            const endDay = rangeWithDowMatch[3].split(' ')[1];
+            const endDow = rangeWithDowMatch[4];
+
+            // Extract time information if available
+            let timeInfo = '';
+            const timeMatch = detailSrc.match(REGEX.TIME);
+            if (timeMatch && timeMatch[1]) {
+                timeInfo = ` / ${timeMatch[1]}`;
+            } else if (detailSrc.includes('All Day')) {
+                timeInfo = ' / All Day';
+            } else if (detailSrc.includes('TBA')) {
+                timeInfo = ' / TBA';
+            }
+
+            // Create raw date string with original format
+            const rawDate = `${startMonth} ${startDay} (${startDow}) - ${endMonth} ${endDay} (${endDow})${timeInfo}`;
+
+            // Create formatted date for Date field (YYYY-MM-DD)
+            const currentYear = new Date().getFullYear();
+            const startMonthNum = getMonthNumber(startMonth.toLowerCase());
+            const formattedDate = `${currentYear}-${startMonthNum}-${startDay.padStart(2, '0')}`;
+
+            return { formattedDate, rawDate };
+        }
+
+        // Try to match the simple date with day of week format (e.g., "Aug 24 (Sun)")
+        const simpleDateWithDowMatch = detailSrc.match(REGEX.SIMPLE_DATE_WITH_DOW);
+        if (simpleDateWithDowMatch) {
+            const month = simpleDateWithDowMatch[1].split(' ')[0];
+            const day = simpleDateWithDowMatch[1].split(' ')[1];
+            const dow = simpleDateWithDowMatch[2];
+
+            // Extract time information if available
+            let timeInfo = '';
+            const timeMatch = detailSrc.match(REGEX.TIME);
+            if (timeMatch && timeMatch[1]) {
+                timeInfo = ` / ${timeMatch[1]}`;
+            } else if (detailSrc.includes('All Day')) {
+                timeInfo = ' / All Day';
+            } else if (detailSrc.includes('TBA')) {
+                timeInfo = ' / TBA';
+            }
+
+            // Create raw date string with original format
+            const rawDate = `${month} ${day} (${dow})${timeInfo}`;
+
+            // Create formatted date for Date field (YYYY-MM-DD)
+            const currentYear = new Date().getFullYear();
+            const monthNum = getMonthNumber(month.toLowerCase());
+            const formattedDate = `${currentYear}-${monthNum}-${day.padStart(2, '0')}`;
+
+            return { formattedDate, rawDate };
+        }
+
+        // Fall back to the standard header date extraction
         const match = detailSrc.match(REGEX.HEADER_DATE);
-        return match ? cleanHtml(match[1]) : null;
+        const cleanedDate = match ? cleanHtml(match[1]) : null;
+
+        if (cleanedDate) {
+            // Try to extract month and day from the cleaned date
+            const dateMatch = cleanedDate.match(/(Jan|Feb|Mar|Apr|May|Jun|Jul|Aug|Sep|Oct|Nov|Dec)\s+(\d{1,2})/i);
+            if (dateMatch) {
+                const month = dateMatch[1];
+                const day = dateMatch[2];
+                const currentYear = new Date().getFullYear();
+                const monthNum = getMonthNumber(month.toLowerCase());
+                const formattedDate = `${currentYear}-${monthNum}-${day.padStart(2, '0')}`;
+                return { formattedDate, rawDate: cleanedDate };
+            }
+        }
+
+        return { formattedDate: null, rawDate: cleanedDate };
     } catch (error) {
         console.error(
             '[OleMiss] Error extracting header date:',
             error instanceof Error ? error.message : String(error),
         );
-        return null;
+        return { formattedDate: null, rawDate: null };
     }
 }
 
@@ -400,16 +515,43 @@ export function processSportsItem(item: any): any {
         try {
             // Get game details including date information
             const gameDetails = extractGameDetails(item.DetailSrc, item.Sports);
-            const headerGameDate = extractHeaderGameDate(item.DetailSrc);
+            const headerGameData = extractHeaderGameDate(item.DetailSrc);
 
             // Process date information - prioritize header date if available
-            const dateSource = headerGameDate || gameDetails.Date;
-            if (dateSource) {
-                updateDateFields(dateSource, item);
+            if (headerGameData.rawDate) {
+                // Store the raw date format in EventDate
+                item.EventDate = headerGameData.rawDate;
+                console.log(`[OleMiss] Set EventDate to raw format: ${item.EventDate}`);
+
+                // Store the formatted date in Date field if available
+                if (headerGameData.formattedDate) {
+                    item.Date = headerGameData.formattedDate;
+                    console.log(`[OleMiss] Set Date to formatted: ${item.Date}`);
+                }
+            } else if (gameDetails.Date) {
+                updateDateFields(gameDetails.Date, item);
+
+                // Extract year from the current date (or use current year if not available)
+                const currentYear = new Date().getFullYear();
+                const monthName = gameDetails.Date.split(' ')[0]; // e.g., "Aug"
+                const day = gameDetails.Date.split(' ')[1]; // e.g., "24"
+                const monthNum = getMonthNumber(monthName.toLowerCase());
+
+                // Set Date in YYYY-MM-DD format
+                if (monthNum && day) {
+                    item.Date = `${currentYear}-${monthNum}-${day.padStart(2, '0')}`;
+                    console.log(`[OleMiss] Set Date to ${item.Date} from ${gameDetails.Date}`);
+
+                    // If EventDate is not set, use the original date format
+                    if (!item.EventDate) {
+                        item.EventDate = gameDetails.Date;
+                        console.log(`[OleMiss] Set EventDate to ${item.EventDate}`);
+                    }
+                }
             }
 
-            // Set EventDate if available from gameDetails
-            if (gameDetails.EventDate) {
+            // Set EventDate if available from gameDetails and not already set
+            if (gameDetails.EventDate && !item.EventDate) {
                 item.EventDate = gameDetails.EventDate;
             }
 

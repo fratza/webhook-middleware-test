@@ -1,30 +1,8 @@
-import { db } from '../../config/firebase';
+import { admin, db, getFirestore } from '../../config/firebase';
+import { filterItemsByDate } from '../../utils/firestore.utils';
 import { Firestore } from 'firebase-admin/firestore';
-
-// Define error response type
-type ErrorResponse = {
-    error: string;
-};
-
-// Define the standard response format
-type StandardResponse = {
-    uid: string;
-    Title: string;
-    Location: string;
-    Date: string;
-    Description: string;
-    ImageUrl: string[];
-    Link: string;
-};
-
-// Define custom response format that extends the standard format
-type CustomResponse = StandardResponse & {
-    Logo: string;
-    Sports: string;
-    Score: string;
-    EventDate: string;
-    EventEndDate: string;
-};
+import { ErrorResponse, StandardResponse, CustomResponse } from '../../dto/firestore.dto';
+import { cacheProvider } from '../../middlewares/cache';
 
 // List of document names that require custom fields in the response
 const CUSTOM_DOCUMENTS = ['olemisssports.com'];
@@ -32,14 +10,27 @@ const CUSTOM_DOCUMENTS = ['olemisssports.com'];
 /**
  * Service for handling Firestore operations
  */
+
 class FirestoreService {
-    private db: Firestore;
+    private _db: Firestore;
+    private databaseId?: string;
+    // Default cache TTL in seconds (5 minutes)
+    private static CACHE_TTL = 300;
+
+    /**
+     * Get the Firestore database instance
+     */
+    get db(): Firestore {
+        return this._db;
+    }
 
     /**
      * Constructor for FirestoreService
+     * @param databaseId Optional database ID to use for Firestore operations
      */
-    constructor() {
-        this.db = db;
+    constructor(databaseId?: string) {
+        this.databaseId = databaseId;
+        this._db = databaseId ? getFirestore(databaseId) : db;
     }
 
     /**
@@ -48,7 +39,7 @@ class FirestoreService {
      * @param {string} collection - The name of the Firestore collection to query.
      * @returns {Promise<string[] | ErrorResponse>} - A promise that resolves to an array of document IDs or an error response
      */
-    async fetchFromCollection(collection: string): Promise<string[] | ErrorResponse> {
+    public async fetchFromCollection(collection: string): Promise<string[] | ErrorResponse> {
         try {
             const snapshot = await this.db.collection(collection).get();
             const documentIds = snapshot.docs.map((doc) => doc.id);
@@ -67,7 +58,7 @@ class FirestoreService {
      * @param {string} documentId - The ID of the document to retrieve.
      * @returns {Promise<any | ErrorResponse>} - A promise that resolves to the document data or an error response.
      */
-    async fetchDocumentById(collection: string, documentId: string): Promise<any | ErrorResponse> {
+    public async fetchDocumentById(collection: string, documentId: string): Promise<any | ErrorResponse> {
         try {
             const docRef = this.db.collection(collection).doc(documentId);
             const doc = await docRef.get();
@@ -107,7 +98,7 @@ class FirestoreService {
      * @param {string} documentId - The ID of the document to delete.
      * @returns {Promise<{success: true; message: string} | ErrorResponse>} - A promise that resolves to a success object or an error response.
      */
-    async deleteDocumentById(
+    public async deleteDocumentById(
         collection: string,
         documentId: string,
     ): Promise<{ success: true; message: string } | ErrorResponse> {
@@ -180,6 +171,17 @@ class FirestoreService {
      */
     async fetchCategoryData(collection: string, documentId: string, categoryName: string): Promise<object[]> {
         try {
+            // Create a cache key
+            const cacheKey = `category:${collection}:${documentId}:${categoryName}`;
+
+            // Try to get data from cache first
+            const cachedData = await cacheProvider.get(cacheKey);
+            if (cachedData) {
+                // Return cached data if it exists
+                return this.sortCategoryData(cachedData);
+            }
+
+            // If no cache, fetch from Firestore
             const docRef = this.db.collection(collection).doc(documentId);
             const doc = await docRef.get();
 
@@ -198,6 +200,9 @@ class FirestoreService {
             if (!docData[categoryName] || !Array.isArray(docData[categoryName])) {
                 throw new Error(`Category '${categoryName}' not found or is not an array`);
             }
+
+            // Cache the result
+            await cacheProvider.set(cacheKey, docData[categoryName], FirestoreService.CACHE_TTL);
 
             // Sort the data in descending order by publishedDate or createdAt
             return this.sortCategoryData(docData[categoryName]);
@@ -231,97 +236,52 @@ class FirestoreService {
         // Apply date range filter if dates are provided
         let filteredData = data as any[];
 
-        if (fromDate && toDate) {
-            filteredData = filteredData.filter((item: any) => {
-                const typedItem = item as { EventDate?: string; Date?: string };
+        // Use the utility function to filter items by date
+        filteredData = filterItemsByDate(filteredData, fromDate, toDate);
 
-                // First try to use the Date field (YYYY-MM-DD format)
-                if (typedItem.Date) {
-                    const itemDate = new Date(typedItem.Date);
-                    if (!isNaN(itemDate.getTime())) {
-                        // Check if the date is within the range
-                        return itemDate >= fromDate && itemDate <= toDate;
-                    }
-                }
-
-                // Fall back to EventDate if Date is not available or invalid
-                if (typedItem.EventDate) {
-                    const eventDate = new Date(typedItem.EventDate);
-                    if (!isNaN(eventDate.getTime())) {
-                        // Check if the event date is within the range
-                        return eventDate >= fromDate && eventDate <= toDate;
-                    }
-                }
-
-                // If neither Date nor EventDate is valid, exclude this item
-                return false;
-            });
-        }
-
-        // Apply count limit if specified
-        if (count !== undefined) {
+        // Apply count limit if specified - do this early to avoid unnecessary processing
+        if (count !== undefined && filteredData.length > count) {
             filteredData = filteredData.slice(0, count);
         }
 
-        // Ensure each item has all required fields before formatting
-        const itemsWithRequiredFields = filteredData.map((item, index) => {
+        // Use a Map to cache formatted responses for better performance with large datasets
+        const formattedDataCache = new Map<string, any>();
+        const isCustomDocument = documentName === 'olemisssports.com';
+
+        // Ensure each item has all required fields and format in one pass
+        const formattedData = filteredData.map((item, index) => {
             const typedItem = item as Record<string, any>;
+            const itemUid = typedItem.uid || `${subcategory.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`;
+
+            // Check if we've already formatted an item with this UID
+            if (formattedDataCache.has(itemUid)) {
+                return formattedDataCache.get(itemUid);
+            }
 
             // Generate a UID if one doesn't exist
             if (!typedItem.uid) {
-                typedItem.uid = `${subcategory.toLowerCase().replace(/\s+/g, '-')}-${Date.now()}-${index}`;
+                typedItem.uid = itemUid;
             }
 
-            // Ensure Title field exists
-            if (!typedItem.Title) {
-                typedItem.Title = typedItem.title || typedItem.name || '';
-            }
-
-            // Ensure Location field exists
-            if (!typedItem.Location) {
-                typedItem.Location = typedItem.location || '';
-            }
-
-            // Ensure Description field exists
-            if (!typedItem.Description) {
-                typedItem.Description = typedItem.description || typedItem.summary || '';
-            }
-
-            // Ensure ImageUrl field exists and is an array
-            if (!typedItem.ImageUrl) {
+            // Ensure required fields exist with a more efficient approach
+            if (!typedItem.Title) typedItem.Title = typedItem.title || typedItem.name || '';
+            if (!typedItem.Location) typedItem.Location = typedItem.location || '';
+            if (!typedItem.Description) typedItem.Description = typedItem.description || typedItem.summary || '';
+            if (!typedItem.ImageUrl)
                 typedItem.ImageUrl = typedItem.imageUrl || typedItem.image || typedItem.images || [];
-            }
+            if (!typedItem.Link) typedItem.Link = typedItem.link || typedItem.url || '';
 
-            // Ensure Link field exists
-            if (!typedItem.Link) {
-                typedItem.Link = typedItem.link || typedItem.url || '';
-            }
+            // Format the item
+            const formattedItem = this.createStandardResponse(typedItem, isCustomDocument);
 
-            return typedItem;
+            // Cache the formatted response
+            formattedDataCache.set(itemUid, formattedItem);
+
+            return formattedItem;
         });
 
-        // Format the filtered data with standardized fields
-        const formattedData = itemsWithRequiredFields.map((item: Record<string, any>) => {
-            return this.createStandardResponse(item, documentName === 'olemisssports.com');
-        });
-
-        // Sort by date in ascending order (latest date on top)
-        return formattedData.sort((a: Record<string, any>, b: Record<string, any>) => {
-            const dateA = a.Date ? new Date(a.Date) : null;
-            const dateB = b.Date ? new Date(b.Date) : null;
-
-            // If both dates are valid, compare them
-            if (dateA && dateB && !isNaN(dateA.getTime()) && !isNaN(dateB.getTime())) {
-                return dateB.getTime() - dateA.getTime();
-            }
-
-            // If one date is invalid, prioritize the valid one
-            if (dateA && !isNaN(dateA.getTime())) return -1;
-            if (dateB && !isNaN(dateB.getTime())) return 1;
-
-            // If both dates are invalid, maintain original order
-            return 0;
-        });
+        // Sort by date in descending order (latest date on top)
+        return this.sortCategoryData(formattedData);
     }
 
     /**
@@ -339,7 +299,7 @@ class FirestoreService {
             uid: item.uid || '',
             Title: item.Title || '',
             Location: item.Location || '',
-            Date: item.Date || item.EventDate || '',
+            Date: item.Date || '',
             Description: item.Description || '',
             ImageUrl: Array.isArray(item.ImageUrl) ? item.ImageUrl : item.ImageUrl ? [item.ImageUrl] : [],
             Link: item.Link || '',
@@ -389,16 +349,35 @@ class FirestoreService {
      * @returns Sorted array
      */
     private sortCategoryData(items: any[]): any[] {
-        return [...items].sort((a, b) => {
-            const dateA = a.publishedDate || a.createdAt || a.createdAtFormatted || 0;
-            const dateB = b.publishedDate || b.createdAt || b.createdAtFormatted || 0;
+        // Early return for empty or single-item arrays
+        if (!items || items.length <= 1) {
+            return items || [];
+        }
 
-            const timeA = dateA && typeof dateA.toMillis === 'function' ? dateA.toMillis() : dateA;
-            const timeB = dateB && typeof dateB.toMillis === 'function' ? dateB.toMillis() : dateB;
-
-            // Sort in descending order (newest first)
-            return timeB - timeA;
+        // Optimize date comparison by pre-computing timestamps
+        const itemsWithTimestamp = items.map((item) => {
+            const date = item.Date ? new Date(item.Date) : null;
+            const timestamp = date && !isNaN(date.getTime()) ? date.getTime() : null;
+            return { item, timestamp };
         });
+
+        // Sort using pre-computed timestamps
+        itemsWithTimestamp.sort((a, b) => {
+            // If both timestamps exist, compare them
+            if (a.timestamp && b.timestamp) {
+                return b.timestamp - a.timestamp;
+            }
+
+            // If one timestamp exists, prioritize it
+            if (a.timestamp) return -1;
+            if (b.timestamp) return 1;
+
+            // If no timestamps, maintain original order
+            return 0;
+        });
+
+        // Return just the items
+        return itemsWithTimestamp.map((wrapper) => wrapper.item);
     }
 
     /**
@@ -474,7 +453,7 @@ class FirestoreService {
 
     /**
      * Removes duplicate items from a specific subcategory in a document based on specified criteria
-     * 
+     *
      * @param {string} collection - The name of the Firestore collection
      * @param {string} documentName - The name of the document containing the data
      * @param {string} subcategory - The subcategory to remove duplicates from
@@ -483,7 +462,7 @@ class FirestoreService {
     async removeDuplicates(
         collection: string,
         documentName: string,
-        subcategory: string
+        subcategory: string,
     ): Promise<{ success: boolean; message: string; removed: number } | ErrorResponse> {
         try {
             // Get the document reference
@@ -512,7 +491,7 @@ class FirestoreService {
             for (const item of items) {
                 // Create a composite key based on Title, Location, Date, and EventDate
                 const key = `${item.Title || ''}|${item.Location || ''}|${item.Date || ''}|${item.EventDate || ''}`;
-                
+
                 if (!uniqueItems.has(key)) {
                     // This is the first occurrence, keep it
                     uniqueItems.set(key, item);
@@ -527,26 +506,250 @@ class FirestoreService {
                 return {
                     success: true,
                     message: 'No duplicates found',
-                    removed: 0
+                    removed: 0,
                 };
             }
 
             // Filter out duplicates
-            const filteredItems = items.filter(item => !duplicates.includes(item.uid));
+            const filteredItems = items.filter((item) => !duplicates.includes(item.uid));
 
             // Update the document with the filtered array
             await docRef.update({
-                [`data.${subcategory}`]: filteredItems
+                [`data.${subcategory}`]: filteredItems,
             });
 
             return {
                 success: true,
                 message: `Successfully removed ${duplicates.length} duplicates from '${subcategory}'`,
-                removed: duplicates.length
+                removed: duplicates.length,
             };
         } catch (error) {
             console.error(`Error removing duplicates from Firestore: ${error}`);
             return { error: `Failed to remove duplicates: ${error}` };
+        }
+    }
+
+    /**
+     * Clears the ImageUrl array for all items in all collections
+     *
+     * @returns {Promise<{success: boolean; message: string; itemsUpdated: number} | ErrorResponse>} - A promise that resolves to a success object with count of updated items or an error response
+     */
+    async clearAllImageUrls(): Promise<{ success: boolean; message: string; itemsUpdated: number } | ErrorResponse> {
+        try {
+            // Query to find all documents
+            const querySnapshot = await this.db.collectionGroup('data').get();
+            let totalUpdatedItems = 0;
+
+            // Iterate through all documents
+            for (const doc of querySnapshot.docs) {
+                // Get the parent document reference
+                const parentRef = doc.ref.parent.parent;
+                if (!parentRef) continue;
+
+                // Get the parent document data
+                const parentDoc = await parentRef.get();
+                const parentData = parentDoc.data();
+                if (!parentData || !parentData.data) continue;
+
+                // Check all subcategories in the document
+                for (const [subcategory, items] of Object.entries(parentData.data)) {
+                    if (!Array.isArray(items)) continue;
+
+                    let updatedItems = false;
+
+                    // Create a new array with cleared ImageUrl fields for all items
+                    const updatedItemsArray = items.map((item: any) => {
+                        if (item) {
+                            // Update all items that have a uid, regardless of current ImageUrl value
+                            if (item.uid) {
+                                totalUpdatedItems++;
+                                updatedItems = true;
+                                return {
+                                    ...item,
+                                    ImageUrl: [],
+                                };
+                            }
+                        }
+                        return item;
+                    });
+
+                    // Only update if changes were made
+                    if (updatedItems) {
+                        await parentRef.update({
+                            [`data.${subcategory}`]: updatedItemsArray,
+                        });
+                    }
+                }
+            }
+
+            if (totalUpdatedItems === 0) {
+                return {
+                    success: true,
+                    message: 'No items found with ImageUrl to clear',
+                    itemsUpdated: 0,
+                };
+            }
+
+            return {
+                success: true,
+                message: `Successfully cleared ImageUrl for ${totalUpdatedItems} items`,
+                itemsUpdated: totalUpdatedItems,
+            };
+        } catch (error) {
+            console.error(`Error clearing all image URLs in Firestore: ${error}`);
+            return { error: `Failed to clear all image URLs: ${error}` };
+        }
+    }
+
+    /**
+     * Clears the ImageUrl array for all items in a specific subcategory
+     *
+     * @param {string} collection - The collection name
+     * @param {string} documentName - The document name
+     * @param {string} subcategory - The subcategory name
+     * @returns {Promise<{success: boolean; message: string; itemsUpdated: number} | ErrorResponse>} - A promise that resolves to a success object with count of updated items or an error response
+     */
+    async clearAllImagesInSubcategory(
+        collection: string,
+        documentName: string,
+        subcategory: string,
+    ): Promise<{ success: boolean; message: string; itemsUpdated: number } | ErrorResponse> {
+        try {
+            const docRef = await this.db.collection(collection).doc(documentName).get();
+            if (!docRef.exists) {
+                return { error: `Document ${documentName} not found in collection ${collection}` };
+            }
+
+            const data = docRef.data();
+            if (!data || !data.data || !data.data[subcategory]) {
+                return { error: `Subcategory ${subcategory} not found in document ${documentName}` };
+            }
+
+            const items = data.data[subcategory];
+            if (!Array.isArray(items)) {
+                return { error: `Subcategory ${subcategory} is not an array` };
+            }
+
+            let updatedItems = 0;
+            const updatedItemsArray = items.map((item: any) => {
+                if (item && item.uid) {
+                    updatedItems++;
+                    return {
+                        ...item,
+                        ImageUrl: [],
+                    };
+                }
+                return item;
+            });
+
+            await this.db
+                .collection(collection)
+                .doc(documentName)
+                .update({
+                    [`data.${subcategory}`]: updatedItemsArray,
+                });
+
+            return {
+                success: true,
+                message: `Successfully cleared ImageUrl for ${updatedItems} items in ${collection}/${documentName}/${subcategory}`,
+                itemsUpdated: updatedItems,
+            };
+        } catch (error) {
+            console.error(`Error clearing all image URLs in subcategory: ${error}`);
+            return { error: `Failed to clear image URLs in subcategory: ${error}` };
+        }
+    }
+
+    /**
+     * Clears the ImageUrl array of an item in a specific collection, document, and subcategory path
+     *
+     * @param {string} collection - The collection name
+     * @param {string} documentName - The document name
+     * @param {string} subcategory - The subcategory name
+     * @param {string} uid - The unique identifier of the item to clear ImageUrl for
+     * @returns {Promise<{success: boolean; message: string} | ErrorResponse>} - A promise that resolves to a success object or an error response
+     */
+    async clearImageByPath(
+        collection: string,
+        documentName: string,
+        subcategory: string,
+        uid: string,
+    ): Promise<{ success: boolean; message: string } | ErrorResponse> {
+        // Simply call updateImageByPath with an empty array for imageUrl
+        return this.updateImageByPath(collection, documentName, subcategory, uid, []);
+    }
+
+    /**
+     * Updates the ImageUrl array of an item in a specific collection, document, and subcategory path
+     *
+     * @param {string} collection - The collection name
+     * @param {string} documentName - The document name
+     * @param {string} subcategory - The subcategory name
+     * @param {string} uid - The unique identifier of the item to update
+     * @param {string|string[]} imageUrl - The new image URL(s) to set
+     * @returns {Promise<{success: boolean; message: string} | ErrorResponse>} - A promise that resolves to a success object or an error response
+     */
+    async updateImageByPath(
+        collection: string,
+        documentName: string,
+        subcategory: string,
+        uid: string,
+        imageUrl: string | string[],
+    ): Promise<{ success: boolean; message: string } | ErrorResponse> {
+        try {
+            // Ensure imageUrl is always an array
+            const imageUrlArray = Array.isArray(imageUrl) ? imageUrl : [imageUrl];
+
+            // Get the document
+            const docRef = await this.db.collection(collection).doc(documentName).get();
+            if (!docRef.exists) {
+                return { error: `Document ${documentName} not found in collection ${collection}` };
+            }
+
+            const data = docRef.data();
+            if (!data || !data.data || !data.data[subcategory]) {
+                return { error: `Subcategory ${subcategory} not found in document ${documentName}` };
+            }
+
+            // Check if the item with the specified uid exists in this subcategory
+            const items = data.data[subcategory];
+            if (!Array.isArray(items)) {
+                return { error: `Subcategory ${subcategory} does not contain an array of items` };
+            }
+
+            const itemIndex = items.findIndex((item: any) => item.uid === uid);
+            if (itemIndex === -1) {
+                return { error: `Item with uid '${uid}' not found in subcategory ${subcategory}` };
+            }
+
+            // First, get the current item to preserve all its data
+            const currentItem = items[itemIndex];
+
+            // Create a new item that's an exact copy of the current one, but with updated ImageUrl
+            const updatedItem = {
+                ...currentItem,
+                ImageUrl: imageUrlArray,
+            };
+
+            // Create a new array with all items, replacing only the one we want to update
+            const updatedItems = [...items];
+            updatedItems[itemIndex] = updatedItem;
+
+            // Update only the specific subcategory array, preserving all other data
+            await this.db
+                .collection(collection)
+                .doc(documentName)
+                .update({
+                    [`data.${subcategory}`]: updatedItems,
+                });
+
+            return {
+                success: true,
+                message: `ImageUrl updated successfully for item with uid '${uid}'`,
+            };
+        } catch (error) {
+            console.error(`Error updating image URL by path: ${error}`);
+            return { error: `Failed to update image URL by path: ${error}` };
         }
     }
 }

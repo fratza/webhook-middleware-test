@@ -38,7 +38,10 @@ export function appendNewData(
         if (Array.isArray(newValue)) {
             newValue.forEach((item, index) => {
                 if (item && item.Sports) {
-                    console.log(`[Sports Data] In appendNewData - ${key}[${index}] sports data:`, JSON.stringify(item.Sports));
+                    console.log(
+                        `[Sports Data] In appendNewData - ${key}[${index}] sports data:`,
+                        JSON.stringify(item.Sports),
+                    );
                 }
             });
         }
@@ -51,7 +54,7 @@ export function appendNewData(
             console.log(
                 `[DB Update] Appended ${newValue.length} items to existing array '${key}' (was: ${originalLength}, now: ${mergedData.data[key].length})`,
             );
-            
+
             // Log sports data after merging
             if (key === 'OleSports' || key === 'Events') {
                 console.log(`[Sports Data] After merge - ${key} array contains ${mergedData.data[key].length} items`);
@@ -260,7 +263,7 @@ export function processArrayItem(
 
     // OLEMISSPORTS.COM
     if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
-        allowedFields = [...allowedFields, 'Score', 'EventDate', 'Sports', 'DetailSrc'];
+        allowedFields = [...allowedFields, 'Score', 'EventDate', 'EventEndDate', 'Sports', 'DetailSrc'];
     }
 
     // Add all existing fields from the processed item, but only if they're in the allowed list
@@ -271,15 +274,23 @@ export function processArrayItem(
         }
     });
 
-    // Add Image URL if it's missing
-    if (!('ImageUrl' in newLabel)) {
-        newLabel['ImageUrl'] = '';
-    }
-
-    // Special handling for olemisssports.com
+    // Special handling for olemisssports.com - apply after copying fields to ensure all data is available
     if (docName === 'olemisssports.com' || originUrl.includes('olemisssports.com')) {
         // Use the dedicated OleMiss processing function
-        processOleMissItem(processedItem, newLabel, key, docName, originUrl);
+        processOleMissItem(processedItem, newLabel, docName, originUrl);
+    }
+
+    // If date is not in YYYY-MM-DD format, parse it
+    if (newLabel.Date && typeof newLabel.Date === 'string') {
+        const isValidFormat = /^\d{4}-\d{2}-\d{2}$/.test(newLabel.Date);
+        if (!isValidFormat) {
+            newLabel.Date = parseDateString(newLabel.Date);
+        }
+    }
+
+    // Add Image URL field and set it to empty string
+    if (!('ImageUrl' in newLabel) && !('ImageUrl' in item)) {
+        newLabel['ImageUrl'] = '';
     }
 
     return newLabel;
@@ -385,4 +396,57 @@ export function deduplicateAgainstExisting(newItems: any[], existingItems: any[]
         const uniqueKey = createUniqueKeyForItem(item);
         return !existingMap.has(uniqueKey);
     });
+}
+
+/**
+ * Parse date strings in formats like "MAY SAT 24" into YYYY-MM-DD format
+ * @param dateString The date string to parse
+ * @returns Formatted date string in YYYY-MM-DD format or the original string if parsing fails
+ */
+export function parseDateString(dateString: string): string {
+    if (!dateString) return '';
+
+    try {
+        // Convert to uppercase for consistent handling
+        const upperDateStr = dateString.toUpperCase().trim();
+
+        // Regular expression to match month and day, ignoring day of week
+        // Matches patterns like "MAY SAT 24", "MAY 24", "MAY24", etc.
+        const regex =
+            /(JAN|FEB|MAR|APR|MAY|JUN|JUL|AUG|SEP|OCT|NOV|DEC)(?:\s+(?:MON|TUE|WED|THU|FRI|SAT|SUN))?\s*(\d{1,2})/;
+
+        const match = upperDateStr.match(regex);
+        if (!match) return dateString;
+
+        const monthStr = match[1];
+        const day = match[2].padStart(2, '0'); // Pad single digit days with leading zero
+
+        // Map month abbreviations to month numbers
+        const monthMap: Record<string, string> = {
+            JAN: '01',
+            FEB: '02',
+            MAR: '03',
+            APR: '04',
+            MAY: '05',
+            JUN: '06',
+            JUL: '07',
+            AUG: '08',
+            SEP: '09',
+            OCT: '10',
+            NOV: '11',
+            DEC: '12',
+        };
+
+        const month = monthMap[monthStr];
+        if (!month) return dateString;
+
+        // Use current year (2025) as specified
+        const year = '2025';
+
+        // Return formatted date
+        return `${year}-${month}-${day}`;
+    } catch (error) {
+        logger.error(`Error parsing date string: ${dateString}`, error);
+        return dateString; // Return original string if parsing fails
+    }
 }

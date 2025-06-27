@@ -17,6 +17,7 @@ import errorHandler from './middlewares/error/error.middleware';
 import CHECKUP_ROUTER from './routes/checkup';
 import WEBHOOK_ROUTER from './routes/webhook';
 import FIRESTORE_ROUTER from './routes/firestore';
+import EXAMPLE_ROUTER from './routes/example/cached-route';
 import process from 'process';
 
 /** Initialize environment and express */
@@ -41,10 +42,8 @@ app.use(express.urlencoded({ extended: true }));
  * @param {NextFunction} next - Express next middleware function
  */
 app.use('/', (req: Request, res: Response, next: NextFunction) => {
-    // Only log non-successful responses or important endpoints
     const isImportantEndpoint = req.url.includes('/api/webhook') || req.url.includes('/api/firestore');
 
-    // Skip logging for successful GET requests to non-important endpoints
     if (req.method !== 'GET' || isImportantEndpoint) {
         logger.debug(`[REQUEST] ${req.method} ${req.url}`);
     }
@@ -79,6 +78,12 @@ app.use('/api/webhook', WEBHOOK_ROUTER);
  * @name /api/firestore
  */
 app.use('/api/firestore', FIRESTORE_ROUTER);
+
+/**
+ * Route serving example with Redis caching.
+ * @name /api/example
+ */
+app.use('/api/example', EXAMPLE_ROUTER);
 
 /**
  * Error handling middleware
