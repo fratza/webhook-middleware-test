@@ -11,9 +11,9 @@ export const ENV = {
         projectId: process.env.FIREBASE_PROJECT_ID || '',
         clientEmail: process.env.FIREBASE_CLIENT_EMAIL || '',
         privateKey: process.env.FIREBASE_PRIVATE_KEY ? process.env.FIREBASE_PRIVATE_KEY.replace(/\\n/g, '\n') : '',
-        databaseId: process.env.FIREBASE_DATABASE_ID || 'default',
+        // databaseId: process.env.FIREBASE_DATABASE_ID || 'default',
     },
-    
+
     // Redis configuration
     redis: {
         url: process.env.REDIS_URL || 'redis://localhost:6379',
